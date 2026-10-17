@@ -38,7 +38,7 @@ import {
   unknownPositionIds,
   updateVersionState,
 } from './processDb.js';
-import { listRoles, unknownRoleCodes, writeAudit } from './db.js';
+import { listRoles, writeAudit } from './db.js';
 import { errorBody, requireAuth, requirePermission } from './middleware.js';
 import { idempotencyPrecheck, idempotencyStore } from './idempotency.js';
 import type { AppEnv, AuthSession } from './env.js';
@@ -420,18 +420,14 @@ processApp.post('/versions/:versionId/steps', requireAuth, requirePermission('pr
   if (!body || !body.code?.trim() || !body.title?.trim()) {
     return c.json(errorBody('INVALID_REQUEST', 'Bước phải có mã và tiêu đề hành động.', requestId), 400);
   }
-  // D-09: id chức vụ phải tồn tại trong bảng positions.
+  // D-09/D-10: id chức vụ (thực hiện, giám sát, được bỏ qua) phải tồn tại trong bảng positions.
   const unknown = await unknownPositionIds(c.env.DB, [
     ...(body.performerPositionIds ?? []),
     ...(body.supervisorPositionIds ?? []),
+    ...(body.skip?.allowedPositions ?? []),
   ]);
   if (unknown.length > 0) {
     return c.json(errorBody('UNKNOWN_POSITION', `Chức vụ không tồn tại: ${unknown.join(', ')}.`, requestId), 400);
-  }
-  // D-10: mã vai trò được bỏ qua phải tồn tại trong bảng roles.
-  const unknownRoles = await unknownRoleCodes(c.env.DB, body.skip?.allowedRoles ?? []);
-  if (unknownRoles.length > 0) {
-    return c.json(errorBody('UNKNOWN_ROLE', `Vai trò không tồn tại: ${unknownRoles.join(', ')}.`, requestId), 400);
   }
   const existing = await getVersionSteps(c.env.DB, version.id);
   if (existing.some((s) => s.code === body.code.trim())) {
@@ -478,14 +474,10 @@ processApp.patch(
     const unknown = await unknownPositionIds(c.env.DB, [
       ...(body.performerPositionIds ?? []),
       ...(body.supervisorPositionIds ?? []),
+      ...(body.skip?.allowedPositions ?? []),
     ]);
     if (unknown.length > 0) {
       return c.json(errorBody('UNKNOWN_POSITION', `Chức vụ không tồn tại: ${unknown.join(', ')}.`, requestId), 400);
-    }
-    // D-10: mã vai trò được bỏ qua phải tồn tại trong bảng roles.
-    const unknownRoles = await unknownRoleCodes(c.env.DB, body.skip?.allowedRoles ?? []);
-    if (unknownRoles.length > 0) {
-      return c.json(errorBody('UNKNOWN_ROLE', `Vai trò không tồn tại: ${unknownRoles.join(', ')}.`, requestId), 400);
     }
     const cols = stepBodyToColumns({ ...body, code: body.code || step.code, title: body.title || step.title });
     if (cols.code !== step.code) {
