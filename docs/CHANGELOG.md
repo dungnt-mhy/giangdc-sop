@@ -9,3 +9,6 @@
 - Baseline: SRS v1.6 LEAN BASELINE SYNC REV9 — đã rà soát, ĐẠT.
 - GitHub: tạo repo `dungnt-mhy/giangdc-sop` (public), đẩy khung T0+T1 lên nhánh `main`.
   OPEN-REPO-01 chốt.
+- Cloudflare: tạo D1 `giangdc-sop-demo`, R2 bucket `giangdc-sop-demo`,
+  Worker `giangdc-sop-demo-api`, Pages project `giangdc-sop-demo`.
+  OPEN-CF-01 chốt (dùng account của user, tài nguyên demo tách production).
