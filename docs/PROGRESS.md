@@ -34,6 +34,20 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
     workers.dev) → đổi `SameSite=None; Secure` ở demo (production cùng origin sẽ
     dùng lại Lax).
 
+- **T2 mở rộng — form bước + danh sách bước (17/10/2026, theo 5 yêu cầu chủ sản phẩm).**
+  - Contract: `UpsertStepBody`/`ProcessStepDto` thêm `roles[]` + `supervisorRoles[]`
+    (`role` deprecated, tương thích đọc/ghi 2 chiều); `ProcessDto.createdByName`.
+  - Migration 0003 (`roles_json`, `supervisor_roles_json` + backfill từ `role` cũ) đã apply D1 demo.
+  - Domain: validate mảng vai trò (trim/dedupe/≤20) — 3 test mới, **55/55 test đạt**.
+  - API: INSERT/UPDATE/copy bước ghi 2 cột JSON; list/detail process JOIN users → createdByName.
+  - Web: StepForm multi-select vai trò thực hiện + giám sát; validate client + lỗi server
+    hiện trong modal (`.form-error`); danh sách bước collapsible ("Chi tiết ▾", mặc định gọn);
+    fix `.step-main{min-width:0}` (bóp chữ mobile); danh sách + chi tiết quy trình hiện
+    "Người tạo · Ngày tạo".
+  - Smoke test API đạt: tạo step roles=[manager,supervisor]/supervisor=[admin,manager] → GET đúng;
+    legacy `role:"author"` → roles=["author"]; dedupe OK; createdByName="Admin Hệ thống".
+  - Deploy Worker + Pages production xong. Kiểm thử trình duyệt web chờ parent agent.
+
 ## Đang dở
 
 - Chưa có.
