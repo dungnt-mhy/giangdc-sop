@@ -1,5 +1,40 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 17/10/2026 (D-09 — mô hình Chức vụ, subagent)
+
+### Đã làm
+
+1. **Contract** (`packages/contracts/src/process.ts`, single source): thêm `PositionDto{id,code,name}`,
+   `CreatePositionBody{code,name}`; `UpsertStepBody` dùng `performerPositionIds[]`/`supervisorPositionIds[]`;
+   `ProcessStepDto` dùng `performerPositions`/`supervisorPositions: PositionDto[]`; XÓA sạch
+   `role`/`roles`/`supervisorRoles` (clean break theo D-09).
+2. **Migration 0004** (`apps/api/migrations/0004_positions.sql`): bảng `positions` + `user_positions`;
+   rebuild `process_steps` (bỏ cột `role`/`roles_json`/`supervisor_roles_json`, thêm 2 cột
+   `performer_position_ids_json`/`supervisor_position_ids_json`); giữ PK/FK/UNIQUE(version_id,code)/
+   index. Đã apply D1 `giangdc-sop-demo` (24 bước giữ nguyên).
+   Seed `scripts/seed-positions.mjs`: 5 chức vụ (Thủ kho, Thủ quỹ, Quản lý kho, Lễ tân, Giám sát)
+   + gán (nhanvien→Thủ kho, quanly→Quản lý kho, pheduyet→Giám sát) — đã apply.
+3. **Domain**: validate mảng id chức vụ (trim/dedupe/≤20; mã POSITION_ID_EMPTY/
+   POSITION_IDS_TOO_MANY/POSITION_IDS_NOT_ARRAY) — test fail-first 4 case mới.
+4. **API**: `processDb.ts` (`listPositions`, `unknownPositionIds`, `toStepDto` resolve id→{id,code,name});
+   `stepBodyToColumns` cột mới; POST/PATCH step trả 400 UNKNOWN_POSITION khi id lạ;
+   GET /positions (đã login), POST /positions (chỉ admin/manager, 409 khi trùng mã);
+   copy version (PRC-003) giữ nguyên position ids. OpenAPI `docs/openapi-t2.yaml` cập nhật.
+5. **Web**: StepForm 2 PositionMultiSelect ("Chức vụ thực hiện"/"Chức vụ giám sát", load từ
+   GET /positions, hint mobile); StepDetail hiện tên chức vụ; giữ prefill mã bước, validate
+   trong modal, loại bằng chứng PRC-006, collapsible. `ROLE_LABEL` giữ cho skip.allowedRoles
+   (chưa đổi — follow-up).
+6. **Evidence:** lint ✓, typecheck ✓, **56/56 test đạt**; build web sạch; deploy Worker
+   `giangdc-sop-demo-api` + Pages `giangdc-sop-app` xong; push GitHub (sau).
+   Smoke test API: tạo step position ids → GET đúng tên (THU_KHO→Thủ kho...); id lạ → 400
+   UNKNOWN_POSITION; POST /positions tạo "Kế toán" → 201 (đã xóa dọn); bước cũ 11 bước
+   SAMPLE-SHIPPING → mảng rỗng, không crash; quy trình test SMK-POS-01 đã archive.
+
+### Chưa làm / chờ
+- Kiểm thử trình duyệt 5 điểm D-09 (cần parent agent — subagent không có live browser).
+- Follow-up (chờ ý kiến chủ sản phẩm): `skip.allowedRoles` có nên đổi sang chức vụ không?
+- UI checkbox Vai trò + Chức vụ ở Quản trị người dùng thuộc T7.
+
 ## Phiên 17/10/2026 (T2 mở rộng — 5 yêu cầu chủ sản phẩm, subagent)
 
 ### Đã làm
