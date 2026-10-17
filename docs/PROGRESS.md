@@ -125,8 +125,16 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
 - **T2.4 Web** (`apps/web/src/processes.tsx`): nav "Danh mục Quy trình" live; danh sách,
   timeline phiên bản, trình soạn (12 trường/PRC-005), thẩm định/phê duyệt/phát hành.
   Deploy Pages production xong. AC-12 chờ kiểm tra trình duyệt.
+- **D-09 mô hình Chức vụ** (17/10/2026, subagent): bước chuyển từ vai trò hệ thống sang
+  `Chức vụ thực hiện[]` + `Chức vụ giám sát[]` (id → bảng `positions`); migration 0004
+  (rebuild `process_steps`, dọn cột 0003) + seed 5 chức vụ đã apply D1 demo; API
+  GET/POST `/positions` + validate id tồn tại; web form dùng multi-select chức vụ từ API.
+  56/56 test đạt; smoke test API đạt; deploy Worker + Pages xong; kiểm thử trình duyệt chờ.
 
 ## Rủi ro / chờ quyết định
+
+- Follow-up D-09 (chờ ý kiến chủ sản phẩm): `skip.allowedRoles` có nên đổi sang chức vụ không?
+  UI checkbox Vai trò + Chức vụ ở Quản trị người dùng thuộc T7.
 
 - Thiếu file SRS v1.5 FINAL Rev.9 (Technical Reference).
 - Deploy tự động GitHub Actions → Cloudflare chưa dựng (cần user tự thêm
