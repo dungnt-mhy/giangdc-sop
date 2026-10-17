@@ -43,7 +43,9 @@ components:
         expectedResult: { type: string, nullable: true }
         outputs: { type: string, nullable: true }
         notes: { type: string, nullable: true }
-        role: { type: string, nullable: true }
+        role: { type: string, nullable: true, deprecated: true }
+        roles: { type: array, items: { type: string } }
+        supervisorRoles: { type: array, items: { type: string } }
         required: { type: boolean }
         targetDurationMin: { type: integer, nullable: true }
         warnings: { type: string, nullable: true }
@@ -118,7 +120,7 @@ paths:
     get:
       summary: Chi tiết quy trình
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
-      responses: { '200': { description: '{process}' }, '404': { description: NOT_FOUND } }
+      responses: { '200': { description: '{process} — gồm createdByName (tên người tạo, JOIN users)' }, '404': { description: NOT_FOUND } }
     patch:
       summary: Sửa trường catalog (mã bất biến — BR-001)
       parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
@@ -186,7 +188,9 @@ paths:
                 expectedResult: { type: string, nullable: true }
                 outputs: { type: string, nullable: true }
                 notes: { type: string, nullable: true }
-                role: { type: string, nullable: true }
+                role: { type: string, nullable: true, deprecated: true }
+                roles: { type: array, items: { type: string } }
+                supervisorRoles: { type: array, items: { type: string } }
                 required: { type: boolean, default: true }
                 targetDurationMin: { type: integer, nullable: true }
                 warnings: { type: string, nullable: true }
