@@ -505,6 +505,120 @@ function ProcessDetail({
   );
 }
 
+/* ---------------- Sơ đồ quy trình (luồng dọc, SVG tự vẽ) ---------------- */
+
+/**
+ * Sơ đồ quy trình dạng luồng dọc: Bắt đầu → các bước theo thứ tự → Kết thúc.
+ * Tự vẽ bằng SVG (không thêm thư viện), responsive, bấm vào node để mở/đóng chi tiết bước.
+ */
+function ProcessDiagram({
+  steps,
+  openSteps,
+  onToggle,
+}: {
+  steps: ProcessStepDto[];
+  openSteps: Set<string>;
+  onToggle: (id: string) => void;
+}) {
+  const uid = React.useId().replace(/[^a-zA-Z0-9]/g, '');
+  const markerId = `dg-arrow-${uid}`;
+  const W = 360;
+  const NODE_W = 300;
+  const NX = (W - NODE_W) / 2;
+  const CX = W / 2;
+  const LINE_H = 16;
+  const GAP = 36;
+
+  const wrap = (text: string, max: number): string[] => {
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let cur = '';
+    for (const w of words) {
+      const next = cur ? `${cur} ${w}` : w;
+      if (next.length > max && cur) { lines.push(cur); cur = w; }
+      else cur = next;
+    }
+    if (cur) lines.push(cur);
+    return lines.length > 0 ? lines : [''];
+  };
+
+  interface DNode {
+    id: string;
+    kind: 'start' | 'step' | 'end';
+    y: number;
+    h: number;
+    step?: ProcessStepDto;
+    titleLines: string[];
+  }
+  const nodes: DNode[] = [];
+  let y = 10;
+  const push = (n: Omit<DNode, 'y'>) => {
+    nodes.push({ ...n, y });
+    y += n.h + GAP;
+  };
+
+  push({ id: '__start', kind: 'start', h: 36, titleLines: ['Bắt đầu'] });
+  const ordered = [...steps].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const s of ordered) {
+    const titleLines = wrap(s.title || '(chưa đặt tên)', 36);
+    // mã bước + tiêu đề + dòng meta
+    const h = 26 + titleLines.length * LINE_H + 26;
+    push({ id: s.id, kind: 'step', h, step: s, titleLines });
+  }
+  push({ id: '__end', kind: 'end', h: 36, titleLines: ['Kết thúc'] });
+  const totalH = y - GAP + 10;
+
+  if (steps.length === 0) {
+    return <div className="empty">Chưa có bước nào để vẽ sơ đồ.</div>;
+  }
+
+  return (
+    <svg viewBox={`0 0 ${W} ${totalH}`} className="proc-diagram" role="img" aria-label="Sơ đồ quy trình">
+      <defs>
+        <marker id={markerId} markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <path d="M0,0 L9,4.5 L0,9 Z" className="dg-arrowhead" />
+        </marker>
+      </defs>
+      {nodes.map((n, i) => (
+        <g key={n.id}>
+          {i > 0 && (
+            <line
+              x1={CX} y1={nodes[i - 1].y + nodes[i - 1].h}
+              x2={CX} y2={n.y - 4}
+              className="dg-edge" markerEnd={`url(#${markerId})`}
+            />
+          )}
+          {n.kind === 'step' && n.step ? (
+            <g
+              className={`dg-node${openSteps.has(n.id) ? ' open' : ''}${n.step.required ? '' : ' optional'}`}
+              onClick={() => onToggle(n.id)}
+            >
+              <rect x={NX} y={n.y} width={NODE_W} height={n.h} rx={10} />
+              <text x={CX} y={n.y + 20} textAnchor="middle" className="dg-code">{n.step.code}</text>
+              {n.titleLines.map((ln, li) => (
+                <text key={li} x={CX} y={n.y + 26 + (li + 1) * LINE_H} textAnchor="middle" className="dg-title">
+                  {ln}
+                </text>
+              ))}
+              <text x={CX} y={n.y + n.h - 10} textAnchor="middle" className="dg-meta">
+                {n.step.required ? 'Bắt buộc' : 'Tùy chọn'}
+                {n.step.skip.allowed ? ' · ⏭ Cho phép bỏ qua' : ''}
+              </text>
+            </g>
+          ) : (
+            <g className="dg-terminal">
+              <rect x={CX - 70} y={n.y} width={140} height={n.h} rx={18} />
+              <text x={CX} y={n.y + 23} textAnchor="middle" className="dg-terminal-text">
+                {n.titleLines[0]}
+              </text>
+            </g>
+          )}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 /* ---------------- Form bước (đủ 12 trường PRC-005 + PRC-006/007/008) ---------------- */
 
 const EMPTY_STEP: UpsertStepBody = {
@@ -877,6 +991,12 @@ function VersionEditor({
         </div>
       </section>
 
+      <section className="section">
+        <h3>Sơ đồ quy trình</h3>
+        <p className="sec-desc">Bấm vào từng bước để xem chi tiết.</p>
+        <ProcessDiagram steps={steps} openSteps={openSteps} onToggle={toggleStep} />
+      </section>
+
       {editing && (
         <StepForm initial={editing} positions={positions} busy={busy} onCancel={() => { setEditing(null); setEditId(null); }} onSave={saveStep} />
       )}
@@ -1056,6 +1176,12 @@ function VersionReview({
             />
           ))}
         </div>
+      </section>
+
+      <section className="section">
+        <h3>Sơ đồ quy trình</h3>
+        <p className="sec-desc">Bấm vào từng bước để xem chi tiết.</p>
+        <ProcessDiagram steps={steps} openSteps={openSteps} onToggle={toggleStep} />
       </section>
 
       <section className="section">
