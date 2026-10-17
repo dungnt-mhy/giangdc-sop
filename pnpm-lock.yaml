@@ -203,6 +203,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@giangdc-sop/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       react:
         specifier: ^19.0.0
         version: 19.3.1
