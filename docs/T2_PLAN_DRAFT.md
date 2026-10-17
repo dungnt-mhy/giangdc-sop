@@ -122,6 +122,10 @@
 | BR-001 | code UNIQUE; (process_id, version_no) UNIQUE; nextVersionNo | unit; smoke 3: mã trùng → 409 | đạt |
 | BR-002 | không DELETE vật lý process/version (chỉ ARCHIVED/RETIRE) | — (quy ước code) | review code |
 | BR-003 | validateVersionForSubmit: CHANGE_SUMMARY_REQUIRED, IMPACT_ASSESSMENT_REQUIRED | unit 3 case; smoke 6 | 52/52 + curl đạt |
+| PRC-005 ext (roles) | contract: `roles[]`, `supervisorRoles[]` (role deprecated); migration 0003; `stepBodyToColumns` normalize (trim/dedupe/≤20); StepForm multi-select 7 vai trò | unit: ROLE_EMPTY/ROLES_TOO_MANY; smoke: tạo step roles=[manager,supervisor]+supervisor=[admin,manager] → GET đúng; legacy `role:"author"` → roles=["author"]; dedupe ["manager"," manager ","","manager"]→["manager"] | 55/55 test + curl demo đạt (17/10/2026) |
+| YC2 (UX) | StepForm `ferr` + `.form-error`; validate client mã/tiêu đề; `saveStep` throw tiếp lỗi server | kiểm thử trình duyệt (parent agent) | chờ E2E |
+| YC3 (UX) | `StepRowView` collapsible (đầu dòng gọn + "Chi tiết ▾"); `.step-main{min-width:0}` fix bóp chữ mobile | kiểm thử trình duyệt (parent agent) | chờ E2E |
+| YC4 | `ProcessDto.createdByName` (JOIN users); ProcessList + ProcessDetail hiện "Người tạo · Ngày tạo" | smoke: list/detail → createdByName="Admin Hệ thống" | curl demo đạt (17/10/2026) |
 | BR-004 | execution tham chiếu version_id bất biến (T3 dùng) | — | hoãn sang T3 |
 | BR-008/014 | `apps/api/src/idempotency.ts`; Idempotency-Key REQUIRED 6 mutation | smoke 2/3: replay + CONFLICT | curl demo đạt |
 | AC-01 | nhiều process độc lập | smoke: 4 process tạo độc lập | curl demo đạt |
