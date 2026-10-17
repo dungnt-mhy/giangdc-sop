@@ -1,6 +1,7 @@
 import React from 'react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+const LOGO_URL = `${import.meta.env.BASE_URL}logo.webp`;
 
 interface MeResponse {
   user: { id: string; username: string; displayName: string };
@@ -71,9 +72,25 @@ const DEMO_ACCOUNTS: [string, string, string][] = [
   ['nhanvien', 'Staff@123', 'Nhân viên'],
 ];
 
+function Logo({ size }: { size: number }) {
+  return (
+    <img
+      className="logo-img"
+      src={LOGO_URL}
+      alt="SOP Platform"
+      width={size}
+      height={size}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
+/* ---------------- Trang đăng nhập ---------------- */
 function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [showPw, setShowPw] = React.useState(false);
+  const [rememberMe, setRememberMe] = React.useState(true);
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
 
@@ -84,7 +101,7 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
     try {
       await api('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, rememberMe }),
       });
       const me = (await api('/auth/me')) as MeResponse;
       onLogin(me);
@@ -99,7 +116,7 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
     <div className="login-page">
       <div className="login-brand">
         <div className="brand-mark">
-          <div className="brand-logo">S</div>
+          <Logo size={54} />
           <div>
             <div className="brand-name">SOP PLATFORM</div>
             <div className="brand-sub">Hệ thống Quản lý Quy trình</div>
@@ -108,7 +125,7 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
         <h1>Thiết kế quy trình theo phiên bản, thực hiện đúng phiên bản.</h1>
         <p className="lead">
           Quản lý nhiều quy trình độc lập, kiểm soát phiên bản chặt chẽ, thu thập
-          bằng chứng và truy vết đầy đủ mọi thao tác.
+          bằng chứng và truy vết đầy đủ mọi thao tác — an toàn, minh bạch, có kiểm soát.
         </p>
         <ul className="brand-points">
           <li>
@@ -117,40 +134,71 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
           </li>
           <li>
             <span className="tick">✓</span>
-            <span>Phân quyền theo vai trò và phạm vi đơn vị — kiểm tra phía máy chủ</span>
+            <span>Phân quyền theo vai trò và phạm vi đơn vị — mọi kiểm tra thực hiện phía máy chủ</span>
           </li>
           <li>
             <span className="tick">✓</span>
             <span>Nhật ký kiểm tra đầy đủ cho mọi thao tác nhạy cảm</span>
           </li>
         </ul>
+        <div className="brand-foot">Bản demo T1.2 · Dữ liệu mẫu, không dùng cho vận hành thật</div>
       </div>
 
       <div className="login-form-wrap">
         <div className="login-card">
+          <div className="card-logo">
+            <Logo size={42} />
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>SOP PLATFORM</div>
+              <div style={{ fontSize: '0.75rem', color: '#5b6b85' }}>Chào mừng trở lại</div>
+            </div>
+          </div>
           <h2>Đăng nhập</h2>
           <p className="hint">Dùng tài khoản nội bộ được cấp để tiếp tục.</p>
           <form onSubmit={submit}>
             <div className="field">
               <label htmlFor="username">Tên đăng nhập</label>
-              <input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                placeholder="vd: admin"
-              />
+              <div className="input-wrap">
+                <input
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="username"
+                  placeholder="vd: admin"
+                />
+              </div>
             </div>
             <div className="field">
               <label htmlFor="password">Mật khẩu</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                placeholder="••••••••"
-              />
+              <div className="input-wrap">
+                <input
+                  id="password"
+                  type={showPw ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  style={{ paddingRight: '3.4rem' }}
+                />
+                <button
+                  type="button"
+                  className="toggle-pw"
+                  onClick={() => setShowPw((v) => !v)}
+                  tabIndex={-1}
+                >
+                  {showPw ? 'Ẩn' : 'Hiện'}
+                </button>
+              </div>
+            </div>
+            <div className="login-options">
+              <label className="remember">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                Ghi nhớ đăng nhập (30 ngày)
+              </label>
             </div>
             {error && <div className="form-error">{error}</div>}
             <button className="btn-primary" type="submit" disabled={busy}>
@@ -181,74 +229,114 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
   );
 }
 
-const MODULES: { name: string; desc: string; live: boolean; tag: string }[] = [
+/* ---------------- Khung app sau đăng nhập ---------------- */
+const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string }[] = [
+  { key: 'overview', label: 'Tổng quan', ico: '◉', live: true },
+  { key: 'process', label: 'Danh mục Quy trình', ico: '◈', live: false, tag: 'T2' },
+  { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: false, tag: 'T3' },
+  { key: 'evidence', label: 'Bằng chứng', ico: '▣', live: false, tag: 'T4' },
+  { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: false, tag: 'T5' },
+  { key: 'report', label: 'Báo cáo', ico: '▤', live: false, tag: 'T6' },
+];
+
+const MODULES: { name: string; desc: string; live: boolean; tag: string; ico: string }[] = [
   {
     name: 'Xác thực & Phân quyền',
     desc: 'Đăng nhập nội bộ, phiên làm việc phía máy chủ, phân quyền theo vai trò và đơn vị.',
     live: true,
     tag: 'Đang chạy',
+    ico: '◉',
   },
   {
     name: 'Danh mục Quy trình',
     desc: 'Soạn thảo, thẩm định, phê duyệt và phát hành phiên bản quy trình.',
     live: false,
     tag: 'Sắp có · T2',
+    ico: '◈',
   },
   {
     name: 'Lượt Thực hiện',
     desc: 'Khởi tạo và vận hành lượt thực hiện theo đúng phiên bản quy trình.',
     live: false,
     tag: 'Sắp có · T3',
+    ico: '⬢',
   },
   {
     name: 'Bằng chứng',
     desc: 'Thu thập, quét mã độc và lưu trữ bằng chứng theo từng bước.',
     live: false,
     tag: 'Sắp có · T4',
+    ico: '▣',
   },
   {
     name: 'Ngoại lệ',
     desc: 'Ghi nhận, xử lý và phê duyệt ngoại lệ phát sinh khi thực hiện.',
     live: false,
     tag: 'Sắp có · T5',
+    ico: '⚠',
   },
   {
     name: 'Báo cáo',
     desc: 'Tổng hợp tiến độ, xuất báo cáo và tra cứu nhật ký kiểm tra.',
     live: false,
     tag: 'Sắp có · T6',
+    ico: '▤',
   },
 ];
 
 function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   const groups = groupPermissions(me.permissions);
+  const primaryRole = me.roles[0];
+  const initial = me.user.displayName.charAt(0).toUpperCase();
+
   return (
-    <>
-      <header className="navbar">
-        <div className="brand">
-          <div className="brand-logo">S</div>
+    <div className="app-shell">
+      <aside className="sidebar">
+        <div className="brand-mark">
+          <Logo size={42} />
           <div>
             <div className="brand-name">SOP PLATFORM</div>
+            <div className="brand-sub">Quản lý Quy trình</div>
           </div>
         </div>
-        <div className="who">
-          <span className="hello">
-            Xin chào, <strong>{me.user.displayName}</strong>
-          </span>
-          <button className="btn-ghost" onClick={onLogout}>
+        <nav>
+          <div className="nav-label">Phân hệ</div>
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.key}
+              className={`nav-item${item.live ? ' active' : ''}`}
+              disabled={!item.live}
+              title={item.live ? item.label : `${item.label} — sắp ra mắt`}
+            >
+              <span className="ico">{item.ico}</span>
+              {item.label}
+              {!item.live && <span className="soon-tag">{item.tag}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <div className="user-chip">
+            <div className="user-avatar">{initial}</div>
+            <div>
+              <div className="uname">{me.user.displayName}</div>
+              <div className="urole">{ROLE_LABEL[primaryRole] ?? primaryRole}</div>
+            </div>
+          </div>
+          <button className="btn-ghost-light" onClick={onLogout}>
             Đăng xuất
           </button>
         </div>
-      </header>
+      </aside>
 
-      <main className="page">
+      <main className="main">
         <h2 className="page-title">Tổng quan</h2>
         <p className="page-sub">
-          Tài khoản <strong>{me.user.username}</strong> · Phiên làm việc đã được xác thực phía máy chủ.
+          Xin chào, <strong>{me.user.displayName}</strong> · Tài khoản <strong>{me.user.username}</strong> ·
+          Phiên làm việc đã được xác thực phía máy chủ.
         </p>
 
         <div className="stat-grid">
-          <div className="stat-card">
+          <div className="stat-card accent">
             <div className="k">Vai trò</div>
             <div>
               {me.roles.map((r) => (
@@ -270,12 +358,15 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           </div>
           <div className="stat-card">
             <div className="k">Quyền hiệu lực</div>
-            <div className="v">{me.permissions.length}</div>
+            <div className="v-big">{me.permissions.length}</div>
           </div>
         </div>
 
         <section className="section">
           <h3>Quyền hiệu lực theo nhóm</h3>
+          <p className="sec-desc">
+            Danh sách quyền do máy chủ cấp — giao diện không tự suy quyền (BR-013).
+          </p>
           {groups.map(([prefix, perms]) => (
             <div className="perm-group" key={prefix}>
               <div className="gtitle">{PERM_GROUP_LABEL[prefix] ?? prefix}</div>
@@ -291,10 +382,12 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
         </section>
 
         <section className="section">
-          <h3>Phân hệ</h3>
+          <h3>Lộ trình phân hệ</h3>
+          <p className="sec-desc">Các phân hệ sẽ được mở dần theo từng giai đoạn triển khai.</p>
           <div className="module-grid">
             {MODULES.map((m) => (
-              <div className={`module-card${m.live ? ' live' : ''}`} key={m.name}>
+              <div className={`module-card${m.live ? ' live' : ' locked'}`} key={m.name}>
+                <div className="mico">{m.ico}</div>
                 <div className="mname">{m.name}</div>
                 <div className="mdesc">{m.desc}</div>
                 <span className="soon">{m.tag}</span>
@@ -307,7 +400,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           SOP Platform · Bản demo T1.2 · Dữ liệu mẫu, không dùng cho vận hành thật
         </p>
       </main>
-    </>
+    </div>
   );
 }
 
@@ -330,8 +423,11 @@ export default function App() {
   if (loading) {
     return (
       <div className="loading-screen">
-        <div className="spinner" />
-        Đang tải…
+        <Logo size={64} />
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <div className="spinner" />
+          Đang tải…
+        </div>
       </div>
     );
   }
