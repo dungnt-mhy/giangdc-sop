@@ -55,9 +55,18 @@ phía server theo scope (SRS §5, §9.7, BR-013).
 - ✅ AC-16 (phần auth): /auth/me trả permissions/scopes, client không tự suy quyền.
 - ✅ CI xanh, smoke test login/logout đầy đủ trên demo.
 
-## T2 — Process Catalog + Authoring & Governance
+## T2 — Process Catalog + Authoring & Governance ✅ HOÀN THÀNH 17/10/2026
 
-PRC-001..011, GOV-001..009. AC-01, AC-02, AC-12.
+PRC-001..009, GOV-001..007 (MUST) + BR-001/002/003/004/008/014. AC-01, AC-02 (AC-12 chờ kiểm tra trình duyệt).
+(SHOULD: PRC-010, PRC-011, GOV-008, GOV-009 → task sau. Xem `docs/T2_PLAN_DRAFT.md` §5 bảng truy vết.)
+
+**Đã làm:** T2.1 domain (máy trạng thái 7 trạng thái, khóa sửa, activation, validate PRC-009/BR-003,
+phê duyệt D-08 — 33 test mới, tổng 52/52); T2.2 migration 0002 (6 bảng + partial unique index
+1 ACTIVE/1 SCHEDULED) + seed SAMPLE-SHIPPING 11 bước; T2.3 API 21 endpoint (idempotency 6 mutation,
+optimistic concurrency, OpenAPI `docs/openapi-t2.yaml`) — smoke test live đạt toàn bộ;
+T2.4 web (danh sách, soạn thảo 12 trường, thẩm định/phê duyệt/phát hành, timeline phiên bản).
+Dữ liệu test đã dọn, demo chỉ giữ SAMPLE-SHIPPING. Ghi chú: `process.publish`/`deprecate`
+hiện chỉ admin (mapping DEFAULT, chốt G2); job tự kích hoạt SCHEDULED ngoài MVP.
 
 ## T3 — Execution engine + step lifecycle
 
