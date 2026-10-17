@@ -1,5 +1,40 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 17/10/2026 (T2 mở rộng — 5 yêu cầu chủ sản phẩm, subagent)
+
+### Đã làm
+
+1. **YC1 — Vai trò nhiều chọn (thay đổi data model):**
+   - Contract (`packages/contracts/src/process.ts`): `UpsertStepBody`/`ProcessStepDto` thêm
+     `roles?: string[]` + `supervisorRoles?: string[]`; `role` deprecated (đọc = roles[0] ?? cột cũ,
+     ghi `role` cũ → map vào `roles`).
+   - Migration `apps/api/migrations/0003_step_roles.sql`: 2 cột `roles_json`/`supervisor_roles_json`
+     + backfill từ `role` (4 dòng) — đã apply lên D1 `giangdc-sop-demo` qua API.
+   - Domain: validate mảng (trim/dedupe/≤20, báo ROLE_EMPTY/ROLES_TOO_MANY/ROLES_NOT_ARRAY) — 3 test mới.
+   - API (`processDb.ts`, `processes.ts`): đọc/ghi 2 cột JSON; copy version (PRC-003) giữ nguyên roles.
+   - Web StepForm: 2 multi-select 7 vai trò hệ thống (thực hiện + giám sát) + giữ giá trị lạ đã lưu.
+2. **YC2 — Validate hiện lỗi trong modal:** client check mã/tiêu đề (`ferr` + `.form-error`);
+   `saveStep` throw tiếp lỗi server để StepForm hiện.
+3. **YC3 — Danh sách bước collapsible + mobile:** component `StepRowView` (đầu dòng gọn:
+   số/mã/tiêu đề/chip/“Chi tiết ▾”; mở rộng hiện toàn bộ trường); dùng cho cả editor và
+   màn thẩm định; fix `.step-main{min-width:0}` (nguyên nhân bóp chữ từng từ trên mobile);
+   nút ↑↓✎× thành hàng ngang dưới tiêu đề.
+4. **YC4 — Người tạo + ngày tạo:** `ProcessDto.createdByName` (JOIN users qua
+   `processes.created_by`); ProcessList + ProcessDetail hiện "Người tạo · Ngày tạo (dd/mm/yyyy)".
+5. **Evidence:** lint + typecheck + test **55/55 đạt**; build web sạch; deploy Worker
+   `giangdc-sop-demo-api` + Pages `giangdc-sop-app` xong; push GitHub 6 file.
+   Smoke test API đạt toàn bộ (roles[], supervisorRoles[], legacy role mapping, dedupe,
+   createdByName list/detail); quy trình test SMK-ROLE-01 đã archive (giữ SAMPLE-SHIPPING,
+   TEST-E2E-17-10 nguyên vẹn).
+
+### Chưa làm / chờ
+
+- **Kiểm thử trình duyệt web** cho 5 điểm trên (multi-select lưu được, `ferr` trong modal,
+  collapsible đóng/mở, người tạo/ngày tạo, layout mobile) — subagent không có live browser,
+  cần parent agent chạy trên https://giangdc-sop-app.pages.dev.
+- T3 (Execution engine): chưa trình kế hoạch, chưa code (đúng yêu cầu "không làm tiếp").
+
+
 ## Phiên 17/10/2026 (T2 — Process Catalog + Authoring & Governance, subagent)
 
 ### Đã làm (T2 hoàn thành)
