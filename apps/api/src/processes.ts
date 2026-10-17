@@ -276,12 +276,13 @@ processApp.post('/processes/:id/versions', requireAuth, requirePermission('proce
         stmts.push(
           c.env.DB.prepare(
             `INSERT INTO process_steps (id, version_id, code, title, prerequisites, inputs,
-              instructions, expected_result, outputs, notes, role, required,
-              target_duration_min, warnings, sort_order, completion_json, skip_json, failure_policy)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)`,
+              instructions, expected_result, outputs, notes, role, roles_json, supervisor_roles_json,
+              required, target_duration_min, warnings, sort_order, completion_json, skip_json, failure_policy)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
           ).bind(
             newId(), versionId, s.code, s.title, s.prerequisites, s.inputs,
             s.instructions, s.expectedResult, s.outputs, s.notes, s.role,
+            JSON.stringify(s.roles ?? []), JSON.stringify(s.supervisorRoles ?? []),
             s.required ? 1 : 0, s.targetDurationMin, s.warnings, s.sortOrder,
             JSON.stringify(s.completion), JSON.stringify(s.skip), s.failurePolicy,
           ),
@@ -375,13 +376,14 @@ processApp.post('/versions/:versionId/steps', requireAuth, requirePermission('pr
   const maxOrder = existing.reduce((m, s) => Math.max(m, s.sortOrder), 0);
   await c.env.DB.prepare(
     `INSERT INTO process_steps (id, version_id, code, title, prerequisites, inputs, instructions,
-      expected_result, outputs, notes, role, required, target_duration_min, warnings,
-      sort_order, completion_json, skip_json, failure_policy)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)`,
+      expected_result, outputs, notes, role, roles_json, supervisor_roles_json, required,
+      target_duration_min, warnings, sort_order, completion_json, skip_json, failure_policy)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
   )
     .bind(
       stepId, version.id, cols.code, cols.title, cols.prerequisites, cols.inputs,
       cols.instructions, cols.expected_result, cols.outputs, cols.notes, cols.role,
+      cols.roles_json, cols.supervisor_roles_json,
       cols.required, cols.target_duration_min, cols.warnings, maxOrder + 1,
       cols.completion_json, cols.skip_json, cols.failure_policy,
     )
@@ -416,12 +418,14 @@ processApp.patch(
     }
     await c.env.DB.prepare(
       `UPDATE process_steps SET code=?2, title=?3, prerequisites=?4, inputs=?5, instructions=?6,
-        expected_result=?7, outputs=?8, notes=?9, role=?10, required=?11, target_duration_min=?12,
-        warnings=?13, completion_json=?14, skip_json=?15, failure_policy=?16 WHERE id=?1`,
+        expected_result=?7, outputs=?8, notes=?9, role=?10, roles_json=?11, supervisor_roles_json=?12,
+        required=?13, target_duration_min=?14, warnings=?15, completion_json=?16, skip_json=?17,
+        failure_policy=?18 WHERE id=?1`,
     )
       .bind(
         step.id, cols.code, cols.title, cols.prerequisites, cols.inputs, cols.instructions,
-        cols.expected_result, cols.outputs, cols.notes, cols.role, cols.required,
+        cols.expected_result, cols.outputs, cols.notes, cols.role, cols.roles_json,
+        cols.supervisor_roles_json, cols.required,
         cols.target_duration_min, cols.warnings, cols.completion_json, cols.skip_json,
         cols.failure_policy,
       )
@@ -502,6 +506,8 @@ processApp.post('/versions/:versionId/validate', requireAuth, requirePermission(
       outputs: s.outputs,
       notes: s.notes,
       role: s.role,
+      roles: s.roles,
+      supervisorRoles: s.supervisorRoles,
       required: s.required,
       targetDurationMin: s.targetDurationMin,
       warnings: s.warnings,
