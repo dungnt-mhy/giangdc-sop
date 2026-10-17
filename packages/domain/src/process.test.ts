@@ -43,6 +43,8 @@ function step(over: Partial<StepDraft> = {}): StepDraft {
     outputs: null,
     notes: null,
     role: null,
+    roles: [],
+    supervisorRoles: [],
     required: true,
     targetDurationMin: null,
     warnings: null,
@@ -280,5 +282,26 @@ describe('blankStep: 12 trường PRC-005 có đủ', () => {
     }
     expect(s.completion).toEqual([]);
     expect(s.failurePolicy).toBe('STOP');
+  });
+});
+
+describe('validate roles[] / supervisorRoles[] (17/10/2026)', () => {
+  it('chấp nhận mảng vai trò hợp lệ', () => {
+    const issues = validateVersionForSubmit(
+      draft(),
+      [step({ roles: ['manager', 'supervisor'], supervisorRoles: ['admin'] })],
+    );
+    expect(issues.filter((i) => i.field === 'roles' || i.field === 'supervisorRoles')).toEqual([]);
+  });
+  it('báo lỗi khi có vai trò rỗng', () => {
+    const issues = validateVersionForSubmit(draft(), [step({ roles: ['manager', '  '] })]);
+    expect(issues.some((i) => i.code === 'ROLE_EMPTY' && i.field === 'roles')).toBe(true);
+  });
+  it('báo lỗi khi quá 20 vai trò', () => {
+    const issues = validateVersionForSubmit(
+      draft(),
+      [step({ supervisorRoles: Array.from({ length: 21 }, (_, i) => `r${i}`) })],
+    );
+    expect(issues.some((i) => i.code === 'ROLES_TOO_MANY' && i.field === 'supervisorRoles')).toBe(true);
   });
 });
