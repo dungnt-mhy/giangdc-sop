@@ -2,6 +2,28 @@
 
 ## Phiên 17/10/2026 (khởi tạo dự án)
 
+### Đã làm (bổ sung — T1.1 hoàn thành)
+
+5. T1.1 nền móng + CI: monorepo pnpm workspaces (apps/web Vite React, apps/api Hono
+   Worker, packages/domain với Execution state machine + 6 unit test, packages/adapters,
+   packages/contracts); GitHub Actions CI xanh (lint/typecheck/test/build/audit);
+   Cloudflare demo: D1 `giangdc-sop-demo` (uuid 1d74db80-…), R2 bucket `giangdc-sop-demo`,
+   Worker https://giangdc-sop-demo-api.iaict-platform.workers.dev,
+   Pages https://giangdc-sop-demo.pages.dev; smoke test đạt.
+   OPEN-REPO-01 và OPEN-CF-01 đã chốt.
+6. Bài học kỹ thuật: gh CLI không dùng được token vault (gửi `Authorization: token`,
+   placement đăng ký là `bearer_header`) — dùng helper Python `bin/gh_api.py` /
+   `bin/cf_api.py` với Bearer surrogate; wrangler chạy được với
+   CLOUDFLARE_API_TOKEN=<surrogate>. pnpm 12 cần `allowBuilds` (không phải
+   `onlyBuiltDependencies`) trong pnpm-workspace.yaml. Vitest ^5 sạch vulnerability.
+
+### Chưa làm / chờ
+
+- T1.2 (xác thực + phân quyền): chưa bắt đầu.
+- Các OPEN chặn G1: OPEN-SOD-01, OPEN-DATA-01, OPEN-SCOPE-01.
+- Deploy tự động GitHub Actions → Cloudflare: chưa dựng (cần user tự thêm
+  CLOUDFLARE_API_TOKEN vào repo secret; token thật không đọc được từ vault).
+
 ### Đã làm
 
 1. Đọc toàn văn SRS v1.6 LEAN BASELINE SYNC REV9 (431 đoạn, 21 bảng).
