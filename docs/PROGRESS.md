@@ -27,6 +27,12 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   - Smoke test trên demo đạt: login sai → 401, login đúng → 200 + cookie,
     /auth/me trả permissions/scopes, ngoài scope → 403 + audit, logout → 401.
     (AC-06, AC-11, AC-16 phần auth).
+  - **Test trình duyệt end-to-end 17/10 (6/6 bước đạt)** trên URL preview:
+    phát hiện & sửa 2 lỗi: (1) CORS chặn origin preview (`*.pages.dev` — mỗi lần
+    deploy sinh URL hash mới) → cho phép `*.pages.dev` ở demo; (2) cookie session
+    `SameSite=Lax` không được gửi trong fetch cross-site (web pages.dev vs API
+    workers.dev) → đổi `SameSite=None; Secure` ở demo (production cùng origin sẽ
+    dùng lại Lax).
 
 ## Đang dở
 
@@ -38,6 +44,12 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   OPEN-REPO-01 đã chốt.
 - Cloudflare: account của user; tài nguyên demo tên `giangdc-sop-demo*`.
   OPEN-CF-01 đã chốt.
+- **Lưu ý:** Pages project `giangdc-sop-demo` đang nối GitHub repo
+  `ntdung-tds/sop-web-giangdc` (auto-deploy nhánh main) → production
+  https://giangdc-sop-demo.pages.dev đang chạy app PA-01 fixture của repo đó,
+  KHÔNG phải bản monorepo này. Bản monorepo deploy thủ công ra URL preview
+  (vd: https://f54a1129.giangdc-sop-demo.pages.dev). Chờ user quyết: tạo Pages
+  project riêng cho monorepo hay gộp pipeline.
 
 ## Quyết định đã chốt (G1)
 
