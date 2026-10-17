@@ -4,7 +4,7 @@ import {
   type ExceptionSeverity,
   type SelfApprovalCheck,
 } from './sod.js';
-import type { SystemRole } from './roles.js';
+import type { Permission } from './permissions.js';
 
 /**
  * Process Catalog + Authoring & Governance — domain (T2).
@@ -227,7 +227,9 @@ export function validateVersionForSubmit(
 export interface VersionApprovalInput {
   requesterId: string;
   candidateId: string;
-  candidateRoles: readonly SystemRole[];
+  /** D-10: quyền hiệu lực + cờ senior của người phê duyệt (nạp từ DB). */
+  candidatePermissions: ReadonlySet<Permission>;
+  candidateSenior: boolean;
   /** D-08: ánh xạ severity -> cấp phê duyệt áp dụng cho cả phê duyệt phiên bản. */
   severity: ExceptionSeverity;
 }
@@ -237,19 +239,24 @@ export type VersionApprovalResult =
   | { ok: false; reason: string };
 
 /**
- * Kiểm tra người phê duyệt phiên bản (GOV-004 + OPEN-SOD-01 + D-08).
- * - 4 mắt mặc định: không tự chọn mình (trừ admin/manager tự duyệt có lưu vết + gắn cờ).
- * - Mức severity càng cao, cấp phê duyệt càng cao (LOW/MEDIUM: 3 role; HIGH/BLOCKING: manager+).
+ * Kiểm tra người phê duyệt phiên bản (GOV-004 + D-10 + D-08).
+ * - 4 mắt mặc định: không tự duyệt (trừ vai trò senior tự duyệt có lưu vết + gắn cờ).
+ * - Mức severity càng cao, cấp phê duyệt càng cao (LOW/MEDIUM: có process.approve;
+ *   HIGH/BLOCKING: thêm cờ senior).
  */
 export function checkVersionApproval(input: VersionApprovalInput): VersionApprovalResult {
-  const { requesterId, candidateId, candidateRoles, severity } = input;
+  const { requesterId, candidateId, candidatePermissions, candidateSenior, severity } = input;
   if (candidateId === requesterId) {
-    // Tự phê duyệt: chỉ admin/manager, luôn gắn cờ (OPEN-SOD-01).
-    const self: SelfApprovalCheck = checkSelfApproval(candidateRoles, severity);
+    // Tự phê duyệt: chỉ vai trò senior, luôn gắn cờ (D-10).
+    const self: SelfApprovalCheck = checkSelfApproval(candidateSenior, severity);
     if (!self.allowed) return { ok: false, reason: 'SELF_APPROVAL_NOT_ALLOWED' };
     return { ok: true, selfApproved: true, flagged: self.flagged, reasonRequired: self.reasonRequired };
   }
-  const r = selectApprover(requesterId, candidateId, candidateRoles, severity);
+  const r = selectApprover(
+    requesterId,
+    { userId: candidateId, permissions: candidatePermissions, seniorApprover: candidateSenior },
+    severity,
+  );
   if (!r.ok) return r;
   return { ok: true, selfApproved: false, flagged: false, reasonRequired: severity === 'HIGH' || severity === 'BLOCKING' };
 }

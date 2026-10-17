@@ -6,6 +6,7 @@ import {
   nextVersionNo,
   resolveActivation,
   validateVersionForSubmit,
+  type Permission,
   type ProcessVersionState,
 } from '@giangdc-sop/domain';
 import type {
@@ -37,11 +38,11 @@ import {
   unknownPositionIds,
   updateVersionState,
 } from './processDb.js';
-import { writeAudit } from './db.js';
+import { listRoles, unknownRoleCodes, writeAudit } from './db.js';
 import { errorBody, requireAuth, requirePermission } from './middleware.js';
 import { idempotencyPrecheck, idempotencyStore } from './idempotency.js';
 import type { AppEnv, AuthSession } from './env.js';
-import type { SystemRole } from '@giangdc-sop/domain';
+import type { DbRole } from './db.js';
 
 function newId(): string {
   return crypto.randomUUID();
@@ -117,6 +118,21 @@ async function withIdempotency(
 
 export const processApp = new Hono<AppEnv>();
 
+/* ================= Vai trò ứng dụng (D-10) ================= */
+
+/** GET /roles — danh sách vai trò ứng dụng (đã đăng nhập). Dùng cho select động. */
+processApp.get('/roles', requireAuth, async (c) => {
+  const roles = await listRoles(c.env.DB);
+  return c.json({
+    items: roles.map((r) => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      seniorApprover: r.senior_approver === 1,
+    })),
+  });
+});
+
 /* ================= Chức vụ (D-09) ================= */
 
 /** GET /positions — danh sách chức vụ (đã đăng nhập). */
@@ -124,12 +140,14 @@ processApp.get('/positions', requireAuth, requirePermission('process.view'), asy
   return c.json({ items: await listPositions(c.env.DB) });
 });
 
-/** POST /positions — tạo chức vụ mới (chỉ admin/manager). */
+/** POST /positions — tạo chức vụ mới (D-10: vai trò senior hoặc có user.manage;
+ * giữ nguyên tắc cũ "admin/manager được tạo", nay diễn đạt bằng senior_approver). */
 processApp.post('/positions', requireAuth, async (c) => {
   const requestId = c.get('requestId') as string;
-  const roles = (c.get('roles') ?? []) as SystemRole[];
-  if (!roles.includes('admin') && !roles.includes('manager')) {
-    return c.json(errorBody('FORBIDDEN', 'Chỉ quản trị hệ thống hoặc quản lý đơn vị được tạo chức vụ.', requestId), 403);
+  const permissions = new Set((c.get('permissions') ?? []) as string[]);
+  const seniorApprover = c.get('seniorApprover') === true;
+  if (!seniorApprover && !permissions.has('user.manage')) {
+    return c.json(errorBody('FORBIDDEN', 'Chỉ vai trò quản trị/quản lý được tạo chức vụ.', requestId), 403);
   }
   const body = await parseJson<CreatePositionBody>(c);
   if (!body || !body.code?.trim() || !body.name?.trim()) {
@@ -410,6 +428,11 @@ processApp.post('/versions/:versionId/steps', requireAuth, requirePermission('pr
   if (unknown.length > 0) {
     return c.json(errorBody('UNKNOWN_POSITION', `Chức vụ không tồn tại: ${unknown.join(', ')}.`, requestId), 400);
   }
+  // D-10: mã vai trò được bỏ qua phải tồn tại trong bảng roles.
+  const unknownRoles = await unknownRoleCodes(c.env.DB, body.skip?.allowedRoles ?? []);
+  if (unknownRoles.length > 0) {
+    return c.json(errorBody('UNKNOWN_ROLE', `Vai trò không tồn tại: ${unknownRoles.join(', ')}.`, requestId), 400);
+  }
   const existing = await getVersionSteps(c.env.DB, version.id);
   if (existing.some((s) => s.code === body.code.trim())) {
     return c.json(errorBody('STEP_CODE_EXISTS', `Mã bước "${body.code.trim()}" đã tồn tại.`, requestId), 409);
@@ -458,6 +481,11 @@ processApp.patch(
     ]);
     if (unknown.length > 0) {
       return c.json(errorBody('UNKNOWN_POSITION', `Chức vụ không tồn tại: ${unknown.join(', ')}.`, requestId), 400);
+    }
+    // D-10: mã vai trò được bỏ qua phải tồn tại trong bảng roles.
+    const unknownRoles = await unknownRoleCodes(c.env.DB, body.skip?.allowedRoles ?? []);
+    if (unknownRoles.length > 0) {
+      return c.json(errorBody('UNKNOWN_ROLE', `Vai trò không tồn tại: ${unknownRoles.join(', ')}.`, requestId), 400);
     }
     const cols = stepBodyToColumns({ ...body, code: body.code || step.code, title: body.title || step.title });
     if (cols.code !== step.code) {
@@ -690,7 +718,7 @@ processApp.post('/versions/:versionId/return', requireAuth, requirePermission('p
     `INSERT INTO approval_records (id, version_id, approver_id, approver_role, decision, reason)
      VALUES (?1,?2,?3,?4,'RETURNED',?5)`,
   )
-    .bind(newId(), version.id, session.user_id, (c.get('roles') as SystemRole[])[0] ?? 'reviewer', body.reason.trim())
+    .bind(newId(), version.id, session.user_id, ((c.get('roles') ?? []) as DbRole[])[0]?.code ?? null, body.reason.trim())
     .run();
   await writeAudit(c.env.DB, {
     id: newId(), actorId: session.user_id, action: 'process.version.return',
@@ -705,7 +733,6 @@ processApp.post('/versions/:versionId/approve', requireAuth, requirePermission('
   return withIdempotency(c, 'process.version.approve', body, async () => {
     const requestId = c.get('requestId') as string;
     const session = c.get('session') as AuthSession;
-    const roles = (c.get('roles') ?? []) as SystemRole[];
     const version = await findVersion(c.env.DB, c.req.param('versionId'));
     if (!version) {
       return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
@@ -719,10 +746,15 @@ processApp.post('/versions/:versionId/approve', requireAuth, requirePermission('
     const severity = body.decision === 'APPROVED'
       ? (body.severity ?? (version.changeSize === 'MAJOR' ? 'HIGH' : 'MEDIUM'))
       : 'LOW';
+    // D-10: người phê duyệt = user khác có process.approve; HIGH/BLOCKING cần cờ senior.
+    const permissions = new Set((c.get('permissions') ?? []) as Permission[]);
+    const seniorApprover = c.get('seniorApprover') === true;
+    const roles = (c.get('roles') ?? []) as DbRole[];
     const check = checkVersionApproval({
       requesterId: version.createdBy ?? '',
       candidateId: session.user_id,
-      candidateRoles: roles,
+      candidatePermissions: permissions,
+      candidateSenior: seniorApprover,
       severity,
     });
     if (!check.ok) {
@@ -747,7 +779,7 @@ processApp.post('/versions/:versionId/approve', requireAuth, requirePermission('
        VALUES (?1,?2,?3,?4,?5,?6,?7,?8)`,
     )
       .bind(
-        newId(), version.id, session.user_id, roles[0] ?? 'approver', body.decision,
+        newId(), version.id, session.user_id, roles[0]?.code ?? null, body.decision,
         body.reason?.trim() || null, check.selfApproved ? 1 : 0, check.flagged ? 1 : 0,
       )
       .run();

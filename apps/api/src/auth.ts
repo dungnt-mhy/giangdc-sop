@@ -1,19 +1,18 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import {
-  effectivePermissions,
   hasScope,
   hashPassword,
   newSessionToken,
   sha256Hex,
   verifyPassword,
-  type SystemRole,
 } from '@giangdc-sop/domain';
 import {
   createSession,
   deleteSessionByTokenHash,
   findSession,
   findUserByUsername,
+  getUserPositions,
   getUserRoles,
   getUserScopes,
   writeAudit,
@@ -71,7 +70,7 @@ authApp.post('/login', async (c) => {
     requestId,
   });
 
-  const roles = (await getUserRoles(c.env.DB, user.id)) as SystemRole[];
+  const roles = await getUserRoles(c.env.DB, user.id);
   // Demo: web (pages.dev) và API (workers.dev) khác site, trình duyệt chỉ gửi
   // cookie trong fetch cross-site khi SameSite=None. Production cùng origin
   // sẽ dùng Lax để giảm rủi ro CSRF.
@@ -84,7 +83,12 @@ authApp.post('/login', async (c) => {
   });
   return c.json({
     user: { id: user.id, username: user.username, displayName: user.display_name },
-    roles,
+    roles: roles.map((r) => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      seniorApprover: r.senior_approver === 1,
+    })),
     rememberMe,
   });
 });
@@ -109,15 +113,23 @@ authApp.post('/logout', async (c) => {
   return c.json({ ok: true });
 });
 
-/** GET /auth/me — thông tin phiên + quyền + scope (BR-013: client không tự suy quyền). */
+/** GET /auth/me — thông tin phiên + vai trò + chức vụ + quyền + scope (BR-013: client không tự suy quyền). */
 authApp.get('/me', requireAuth, async (c) => {
   const session = c.get('session') as AuthSession;
-  const roles = (await getUserRoles(c.env.DB, session.user_id)) as SystemRole[];
+  const roles = await getUserRoles(c.env.DB, session.user_id);
+  const positions = await getUserPositions(c.env.DB, session.user_id);
   const scopes = await getUserScopes(c.env.DB, session.user_id);
+  const permissions = (c.get('permissions') ?? []) as string[];
   return c.json({
     user: { id: session.user_id, username: session.username, displayName: session.display_name },
-    roles,
-    permissions: [...effectivePermissions(roles)],
+    roles: roles.map((r) => ({
+      id: r.id,
+      code: r.code,
+      name: r.name,
+      seniorApprover: r.senior_approver === 1,
+    })),
+    positions,
+    permissions,
     scopes,
   });
 });

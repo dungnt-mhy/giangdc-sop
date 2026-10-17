@@ -1,5 +1,27 @@
 # CHANGELOG.md — Lịch sử thay đổi dự án
 
+## 17/10/2026 — D-10: vai trò ứng dụng mở rộng (thay 7 vai trò cứng)
+
+- Mô hình mới: bảng `roles` (thêm tùy ý: Quản trị viên, Quản lý, Người phê duyệt, Người thực hiện)
+  + `role_permissions` (27 mã quyền giữ nguyên làm vốn từ vựng, UI checkbox thuộc T7)
+  + `user_roles` (gán nhiều vai trò). Tên vai trò không gắn kho/đơn vị (phạm vi do scope).
+- 4 mắt sửa đổi: người duyệt = user khác có quyền `process.approve`; cờ `senior_approver`
+  ở vai trò cho HIGH/BLOCKING; tự duyệt chỉ vai trò senior, luôn gắn cờ + audit.
+- Migration 0005: 3 bảng + seed 4 vai trò (63 phân quyền) + gán 4 user demo; DROP `user_system_roles`.
+  Đã apply D1 demo.
+- Domain: `roles.ts`/`permissions.ts`/`sod.ts` viết lại (quyền tính từ DB); test fail-first;
+  `checkVersionApproval` nhận permissions + senior (D-10).
+- API: `db.ts` load roles/permissions/positions từ DB; `/auth/me` trả roles[]/positions[]/
+  permissions[]; GET `/roles` mới; `skip.allowedRoles` validate theo mã vai trò động
+  (400 UNKNOWN_ROLE); POST `/positions` chuyển sang kiểm tra senior_approver.
+- Web: App.tsx hiện 2 mục "Vai trò ứng dụng" + "Chức vụ" (bỏ 7 vai trò cứng);
+  processes.tsx load vai trò động cho skip.
+- 56/56 test đạt; lint + typecheck sạch; smoke test API đạt (4 user đúng gói quyền;
+  4 mắt; HIGH cần senior: pheduyet→403, quanly→200; admin tự duyệt flagged=1);
+  deploy Worker + Pages demo; push GitHub.
+- Giả định: gói quyền Người thực hiện = author+viewer cũ + operate/execute (không có
+  step.skip); POST /positions giữ nguyên tắc "admin/manager cũ" qua cờ senior.
+
 ## 17/10/2026 — D-09: mô hình Chức vụ thay vai trò hệ thống ở bước
 
 - Phân biệt Vai trò hệ thống (7 role, chỉ phân quyền) với Chức vụ (thủ kho, thủ quỹ...):

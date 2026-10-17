@@ -1,5 +1,3 @@
-import type { SystemRole } from './roles.js';
-
 /**
  * Permission catalog — tập permission code ổn định theo capability (SRS v1.6 §5).
  * Mọi capability thực thi phải map tới permission đã công bố; agent không tự tạo
@@ -43,68 +41,23 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-/** Ánh xạ role -> permission mặc định (DEFAULT, chốt ở G2). */
-export const ROLE_PERMISSIONS: Record<SystemRole, ReadonlySet<Permission>> = {
-  admin: new Set(PERMISSIONS),
-  manager: new Set([
-    'process.view',
-    'process.approve',
-    'execution.create',
-    'execution.view',
-    'execution.operate',
-    'execution.cancel',
-    'execution.reopen',
-    'step.execute',
-    'step.skip',
-    'exception.raise',
-    'exception.decide',
-    'exception.approve',
-    'evidence.upload',
-    'evidence.view',
-    'form.submit',
-    'report.view',
-    'report.export',
-    'audit.view',
-  ]),
-  approver: new Set([
-    'process.view',
-    'process.review',
-    'process.approve',
-    'execution.view',
-    'exception.decide',
-    'exception.approve',
-    'evidence.view',
-    'report.view',
-  ]),
-  author: new Set([
-    'process.create',
-    'process.edit',
-    'process.view',
-    'execution.view',
-    'evidence.view',
-    'form.submit',
-  ]),
-  reviewer: new Set(['process.view', 'process.review', 'execution.view', 'evidence.view']),
-  supervisor: new Set([
-    'process.view',
-    'execution.view',
-    'exception.raise',
-    'evidence.view',
-    'report.view',
-    'audit.view',
-  ]),
-  viewer: new Set(['process.view', 'execution.view', 'evidence.view', 'report.view']),
-};
-
-/** Tổng quyền hiệu lực của một người = hợp các permission của mọi role đang giữ. */
-export function effectivePermissions(roles: readonly SystemRole[]): Set<Permission> {
+/**
+ * Tổng quyền hiệu lực của một người = hợp các permission của mọi vai trò đang giữ.
+ * D-10: tập quyền nạp từ bảng `role_permissions` (DB), không còn map cứng 7 role.
+ */
+export function effectivePermissions(
+  rolePermissions: ReadonlyArray<Iterable<Permission>>,
+): Set<Permission> {
   const out = new Set<Permission>();
-  for (const r of roles) {
-    for (const p of ROLE_PERMISSIONS[r] ?? []) out.add(p);
+  for (const rp of rolePermissions) {
+    for (const p of rp) out.add(p);
   }
   return out;
 }
 
-export function hasPermission(roles: readonly SystemRole[], permission: Permission): boolean {
-  return effectivePermissions(roles).has(permission);
+export function hasPermission(
+  permissions: ReadonlySet<Permission>,
+  permission: Permission,
+): boolean {
+  return permissions.has(permission);
 }

@@ -11,6 +11,7 @@ import type {
   ApprovalRecordDto,
   UpsertStepBody,
   PositionDto,
+  RoleDto,
   ValidationIssueDto,
 } from '@giangdc-sop/contracts';
 import { api } from './App.js';
@@ -30,17 +31,6 @@ const FAILURE_LABEL: Record<string, string> = {
   RETRY: 'Làm lại',
   ESCALATE: 'Chuyển giám sát',
   CANCEL: 'Hủy',
-};
-
-// Nhãn tiếng Việt cho vai trò hệ thống (danh mục vai trò T1.2) — dùng cho select "Vai trò thực hiện"
-const ROLE_LABEL: Record<string, string> = {
-  admin: 'Quản trị hệ thống',
-  manager: 'Quản lý đơn vị',
-  approver: 'Người phê duyệt',
-  author: 'Người soạn thảo',
-  reviewer: 'Người thẩm định',
-  supervisor: 'Giám sát',
-  viewer: 'Người xem',
 };
 
 // Nhãn tiếng Việt cho loại yêu cầu hoàn thành = bằng chứng (PRC-006)
@@ -120,14 +110,32 @@ function positionNames(arr: readonly PositionDto[] | undefined): string {
   return arr.map((p) => p.name).join(', ');
 }
 
-/** Nhãn tiếng Việt cho mảng vai trò hệ thống (dùng cho skip.allowedRoles — chưa đổi theo D-09). */
-function skipRoleNames(arr: readonly string[] | undefined): string {
+/** Nhãn tiếng Việt cho mảng vai trò ứng dụng (D-10: mã vai trò từ bảng `roles`). */
+function useAppRoles(): { roles: RoleDto[]; nameOf: (code: string) => string } {
+  const [roles, setRoles] = React.useState<RoleDto[]>([]);
+  React.useEffect(() => {
+    api('/roles')
+      .then((d) => setRoles((d as { items: RoleDto[] }).items ?? []))
+      .catch(() => setRoles([]));
+  }, []);
+  const nameOf = React.useCallback(
+    (code: string) => roles.find((r) => r.code === code)?.name ?? code,
+    [roles],
+  );
+  return { roles, nameOf };
+}
+
+/** Nhãn tiếng Việt cho mảng mã vai trò được bỏ qua (D-10: tra cứu động). */
+function skipRoleNames(
+  arr: readonly string[] | undefined,
+  nameOf: (code: string) => string,
+): string {
   if (!arr || arr.length === 0) return '—';
-  return arr.map((r) => ROLE_LABEL[r] ?? r).join(', ');
+  return arr.map(nameOf).join(', ');
 }
 
 /** Chi tiết đầy đủ của một bước — dùng khi mở rộng dòng bước (collapsible). */
-function StepDetail({ step: s }: { step: ProcessStepDto }) {
+function StepDetail({ step: s, roleNameOf }: { step: ProcessStepDto; roleNameOf: (code: string) => string }) {
   const kv = (k: string, v: React.ReactNode) => (
     <div className="sd-row"><span className="sd-k">{k}</span><div className="sd-v">{v}</div></div>
   );
@@ -149,7 +157,7 @@ function StepDetail({ step: s }: { step: ProcessStepDto }) {
         <span>{s.completion.map((c, i) => (
           <span className="perm-tag" key={i}>[{COMP_KIND_LABEL[c.kind] ?? c.kind}] {c.label}</span>
         ))}</span>)}
-      {kv('Cho phép bỏ qua', s.skip.allowed ? `Có — vai trò: ${skipRoleNames(s.skip.allowedRoles)}` : 'Không')}
+      {kv('Cho phép bỏ qua', s.skip.allowed ? `Có — vai trò: ${skipRoleNames(s.skip.allowedRoles, roleNameOf)}` : 'Không')}
       {kv('Xử lý khi không đạt', FAILURE_LABEL[s.failurePolicy] ?? s.failurePolicy)}
     </div>
   );
@@ -162,12 +170,14 @@ function StepRowView({
   expanded,
   onToggle,
   ops,
+  roleNameOf,
 }: {
   index: number;
   step: ProcessStepDto;
   expanded: boolean;
   onToggle: () => void;
   ops?: React.ReactNode;
+  roleNameOf: (code: string) => string;
 }) {
   return (
     <div className={`step-row${expanded ? ' open' : ''}`}>
@@ -185,7 +195,7 @@ function StepRowView({
           </div>
         </div>
         {ops && <div className="step-ops-row">{ops}</div>}
-        {expanded && <StepDetail step={step} />}
+        {expanded && <StepDetail step={step} roleNameOf={roleNameOf} />}
       </div>
     </div>
   );
@@ -527,12 +537,14 @@ const EMPTY_STEP: UpsertStepBody = {
 function StepForm({
   initial,
   positions,
+  appRoles,
   onSave,
   onCancel,
   busy,
 }: {
   initial: UpsertStepBody;
   positions: PositionDto[];
+  appRoles: RoleDto[];
   onSave: (b: UpsertStepBody) => Promise<void>;
   onCancel: () => void;
   busy: boolean;
@@ -668,9 +680,9 @@ function StepForm({
         <label className="check"><input type="checkbox" checked={!!f.skip?.allowed} onChange={(e) => set('skip', { ...(f.skip ?? EMPTY_STEP.skip!), allowed: e.target.checked })} /> Cho phép bỏ qua bước này</label>
         {f.skip?.allowed && (
           <div className="field">
-            <label>Vai trò được bỏ qua</label>
+            <label>Vai trò được bỏ qua (D-10)</label>
             <select className="input" multiple value={f.skip.allowedRoles ?? []} onChange={(e) => set('skip', { ...f.skip!, allowedRoles: Array.from(e.target.selectedOptions, (o) => o.value) })}>
-              {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              {appRoles.map((r) => <option key={r.id} value={r.code}>{r.name}</option>)}
             </select>
             <p className="sec-desc">Giữ Ctrl (hoặc chạm nhiều lần trên mobile) để chọn nhiều vai trò.</p>
           </div>
@@ -699,6 +711,7 @@ function VersionEditor({
   const [v, setV] = React.useState(version);
   const [steps, setSteps] = React.useState<ProcessStepDto[]>([]);
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
+  const { roles: appRoles, nameOf: roleNameOf } = useAppRoles();
   const [editing, setEditing] = React.useState<UpsertStepBody | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
   const [openSteps, setOpenSteps] = React.useState<Set<string>>(new Set());
@@ -857,6 +870,7 @@ function VersionEditor({
               step={s}
               expanded={openSteps.has(s.id)}
               onToggle={() => toggleStep(s.id)}
+              roleNameOf={roleNameOf}
               ops={
                 <>
                   <button className="btn-icon" title="Lên" onClick={() => move(s.id, -1)}>↑</button>
@@ -883,7 +897,7 @@ function VersionEditor({
       </section>
 
       {editing && (
-        <StepForm initial={editing} positions={positions} busy={busy} onCancel={() => { setEditing(null); setEditId(null); }} onSave={saveStep} />
+        <StepForm initial={editing} positions={positions} appRoles={appRoles} busy={busy} onCancel={() => { setEditing(null); setEditId(null); }} onSave={saveStep} />
       )}
 
       {showSubmit && (
@@ -930,6 +944,7 @@ function VersionReview({
   const [steps, setSteps] = React.useState<ProcessStepDto[]>([]);
   const [comments, setComments] = React.useState<ReviewCommentDto[]>([]);
   const [approvals, setApprovals] = React.useState<ApprovalRecordDto[]>([]);
+  const { nameOf: roleNameOf } = useAppRoles();
   const [comment, setComment] = React.useState('');
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -1051,6 +1066,7 @@ function VersionReview({
               step={s}
               expanded={openSteps.has(s.id)}
               onToggle={() => toggleStep(s.id)}
+              roleNameOf={roleNameOf}
             />
           ))}
         </div>

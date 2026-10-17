@@ -207,12 +207,14 @@ describe('PRC-009: validate bản nháp trả lỗi theo bước/trường', () 
   });
 });
 
-describe('Phê duyệt phiên bản (GOV-004 + OPEN-SOD-01 + D-08)', () => {
-  it('approver được phê duyệt LOW', () => {
+describe('Phê duyệt phiên bản (GOV-004 + D-10 + D-08)', () => {
+  const P = (...ps: string[]) => new Set<string>(ps);
+  it('người có process.approve được phê duyệt LOW', () => {
     const r = checkVersionApproval({
       requesterId: 'u-author',
       candidateId: 'u-pheduyet',
-      candidateRoles: ['approver'],
+      candidatePermissions: P('process.view', 'process.approve'),
+      candidateSenior: false,
       severity: 'LOW',
     });
     expect(r.ok).toBe(true);
@@ -222,34 +224,38 @@ describe('Phê duyệt phiên bản (GOV-004 + OPEN-SOD-01 + D-08)', () => {
     const r = checkVersionApproval({
       requesterId: 'u1',
       candidateId: 'u1',
-      candidateRoles: ['approver'],
+      candidatePermissions: P('process.approve'),
+      candidateSenior: false,
       severity: 'LOW',
     });
     expect(r.ok).toBe(false);
   });
 
-  it('D-08: HIGH yêu cầu manager trở lên cho phê duyệt phiên bản', () => {
+  it('D-08/D-10: HIGH yêu cầu cờ senior cho phê duyệt phiên bản', () => {
     const bad = checkVersionApproval({
       requesterId: 'u-author',
       candidateId: 'u-pheduyet',
-      candidateRoles: ['approver'],
+      candidatePermissions: P('process.approve'),
+      candidateSenior: false,
       severity: 'HIGH',
     });
     expect(bad.ok).toBe(false);
     const good = checkVersionApproval({
       requesterId: 'u-author',
       candidateId: 'u-quanly',
-      candidateRoles: ['manager'],
+      candidatePermissions: P('process.approve'),
+      candidateSenior: true,
       severity: 'HIGH',
     });
     expect(good.ok).toBe(true);
   });
 
-  it('admin tự phê duyệt được nhưng bị gắn cờ (OPEN-SOD-01)', () => {
+  it('vai trò senior tự phê duyệt được nhưng bị gắn cờ (D-10)', () => {
     const r = checkVersionApproval({
       requesterId: 'u-admin',
       candidateId: 'u-admin',
-      candidateRoles: ['admin'],
+      candidatePermissions: P('process.approve', 'user.manage'),
+      candidateSenior: true,
       severity: 'MEDIUM',
     });
     expect(r.ok).toBe(true);
@@ -259,11 +265,12 @@ describe('Phê duyệt phiên bản (GOV-004 + OPEN-SOD-01 + D-08)', () => {
     }
   });
 
-  it('approver thuần không được tự phê duyệt', () => {
+  it('vai trò không senior không được tự phê duyệt', () => {
     const r = checkVersionApproval({
       requesterId: 'u-pheduyet',
       candidateId: 'u-pheduyet',
-      candidateRoles: ['approver'],
+      candidatePermissions: P('process.approve'),
+      candidateSenior: false,
       severity: 'LOW',
     });
     expect(r.ok).toBe(false);

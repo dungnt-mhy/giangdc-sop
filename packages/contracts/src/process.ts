@@ -92,8 +92,8 @@ export interface ProcessStepDto {
 }
 
 /**
- * Chức vụ (D-09): khái niệm riêng với vai trò hệ thống.
- * Vai trò hệ thống (7 role) chỉ dùng phân quyền; chức vụ (thủ kho, thủ quỹ...)
+ * Chức vụ (D-09): khái niệm riêng với vai trò ứng dụng.
+ * Vai trò ứng dụng (bảng `roles`, D-10) dùng phân quyền; chức vụ (thủ kho, thủ quỹ...)
  * gắn vào từng bước của quy trình và gán cho người dùng qua user_positions.
  */
 export interface PositionDto {
@@ -105,6 +105,25 @@ export interface PositionDto {
 export interface CreatePositionBody {
   code: string;
   name: string;
+}
+
+/**
+ * Vai trò ứng dụng (D-10): chức năng trong app (Quản trị viên, Quản lý,
+ * Người phê duyệt, Người thực hiện...). Bảng `roles` thêm tùy ý, KHÔNG gắn
+ * kho/đơn vị vào tên vai trò (phạm vi dữ liệu do scope quyết định).
+ * Thay thế 7 vai trò cứng (roles.ts cũ) và bảng `user_system_roles`.
+ */
+export interface RoleDto {
+  id: string;
+  code: string;
+  name: string;
+  seniorApprover: boolean;
+}
+
+export interface CreateRoleBody {
+  code: string;
+  name: string;
+  seniorApprover?: boolean;
 }
 
 export interface ReviewCommentDto {

@@ -19,12 +19,85 @@ export async function findUserByUsername(db: D1Database, username: string): Prom
     .first<DbUser>();
 }
 
-export async function getUserRoles(db: D1Database, userId: string): Promise<string[]> {
+export interface DbRole {
+  id: string;
+  code: string;
+  name: string;
+  senior_approver: number;
+}
+
+/** Vai trò ứng dụng của user (D-10: bảng `roles`, thêm tùy ý). */
+export async function getUserRoles(db: D1Database, userId: string): Promise<DbRole[]> {
   const rows = await db
-    .prepare('SELECT role FROM user_system_roles WHERE user_id = ?1')
+    .prepare(
+      `SELECT r.id, r.code, r.name, r.senior_approver
+       FROM user_roles ur JOIN roles r ON r.id = ur.role_id
+       WHERE ur.user_id = ?1 ORDER BY r.name ASC`,
+    )
     .bind(userId)
-    .all<{ role: string }>();
-  return (rows.results ?? []).map((r) => r.role);
+    .all<DbRole>();
+  return rows.results ?? [];
+}
+
+/** Quyền hiệu lực + cờ senior của user (D-10: hợp từ `role_permissions`). */
+export async function getUserPermissions(
+  db: D1Database,
+  userId: string,
+): Promise<{ permissions: Set<string>; seniorApprover: boolean }> {
+  const rows = await db
+    .prepare(
+      `SELECT DISTINCT rp.permission, r.senior_approver
+       FROM user_roles ur
+       JOIN roles r ON r.id = ur.role_id
+       JOIN role_permissions rp ON rp.role_id = r.id
+       WHERE ur.user_id = ?1`,
+    )
+    .bind(userId)
+    .all<{ permission: string; senior_approver: number }>();
+  const permissions = new Set<string>();
+  let seniorApprover = false;
+  for (const row of rows.results ?? []) {
+    permissions.add(row.permission);
+    if (row.senior_approver) seniorApprover = true;
+  }
+  return { permissions, seniorApprover };
+}
+
+/** Chức vụ của user (D-09). */
+export async function getUserPositions(
+  db: D1Database,
+  userId: string,
+): Promise<{ id: string; code: string; name: string }[]> {
+  const rows = await db
+    .prepare(
+      `SELECT p.id, p.code, p.name
+       FROM user_positions up JOIN positions p ON p.id = up.position_id
+       WHERE up.user_id = ?1 ORDER BY p.name ASC`,
+    )
+    .bind(userId)
+    .all<{ id: string; code: string; name: string }>();
+  return rows.results ?? [];
+}
+
+/** Danh sách vai trò ứng dụng (D-10) — dùng cho select động. */
+export async function listRoles(db: D1Database): Promise<DbRole[]> {
+  const rows = await db
+    .prepare('SELECT id, code, name, senior_approver FROM roles ORDER BY name ASC')
+    .all<DbRole>();
+  return rows.results ?? [];
+}
+
+/** Kiểm tra các mã vai trò có tồn tại; trả về danh sách mã KHÔNG tồn tại. */
+export async function unknownRoleCodes(db: D1Database, codes: string[]): Promise<string[]> {
+  const clean = [...new Set(codes.map((c) => c.trim()).filter(Boolean))];
+  if (clean.length === 0) return [];
+  const placeholders = clean.map((_, i) => `?${i + 1}`).join(',');
+  const rows = await db
+    .prepare(`SELECT code FROM roles WHERE code IN (${placeholders})`)
+    .bind(...clean)
+    .all<{ code: string }>();
+  const found = new Set((rows.results ?? []).map((r) => r.code));
+  return clean.filter((c) => !found.has(c));
 }
 
 export async function getUserScopes(db: D1Database, userId: string): Promise<string[]> {

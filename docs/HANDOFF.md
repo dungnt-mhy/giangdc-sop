@@ -1,5 +1,53 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 17/10/2026 (D-10 — vai trò ứng dụng mở rộng, subagent)
+
+### Đã làm
+
+1. **Contract** (`packages/contracts/src/process.ts`, single source): thêm `RoleDto{id,code,name,seniorApprover}`,
+   `CreateRoleBody{code,name,seniorApprover?}`.
+2. **Migration 0005** (`apps/api/migrations/0005_app_roles.sql`): bảng `roles` + `role_permissions`
+   + `user_roles` (+FK); seed 4 vai trò (Quản trị viên 27 quyền senior=1; Quản lý 18 quyền senior=1;
+   Người phê duyệt 8 quyền; Người thực hiện 11 quyền) = 63 dòng role_permissions; gán 4 user demo
+   theo username; DROP TABLE `user_system_roles`. Đã apply D1 `giangdc-sop-demo`.
+   (Lưu ý kỹ thuật: D1 không hiểu `SELECT x, value FROM (VALUES...)` — phải dùng `column1`.)
+3. **Domain** (thứ tự AGENTS.md §2, test fail-first): `roles.ts` viết lại (RoleRecord/RoleWithPermissions,
+   xóa 7 role cứng); `permissions.ts` (bỏ ROLE_PERMISSIONS cứng, `effectivePermissions`/`hasPermission`
+   tính từ tập quyền DB); `sod.ts` viết lại (D-10: canApprove = có `process.approve`;
+   HIGH/BLOCKING cần senior; self-approve chỉ senior + gắn cờ); `process.ts`
+   `checkVersionApproval` input mới (candidatePermissions + candidateSenior).
+4. **API**: `db.ts` (`getUserRoles`→DbRole[], `getUserPermissions`, `getUserPositions`,
+   `listRoles`, `unknownRoleCodes`); `middleware.ts`/`env.ts` (context: roles, permissions,
+   seniorApprover); `auth.ts` (`/auth/me` + `/auth/login` trả roles[]/positions[]/permissions[]);
+   `processes.ts`: approve/return dùng predicate mới + ghi approver_role = mã vai trò;
+   GET `/roles` mới; `skip.allowedRoles` validate động theo bảng roles (400 UNKNOWN_ROLE);
+   POST `/positions` chuyển sang kiểm tra senior_approver (giữ nguyên tắc "admin/manager cũ").
+   OpenAPI `docs/openapi-t2.yaml` cập nhật.
+5. **Web**: `App.tsx` (MeResponse mới; user chip + Tổng quan hiện 2 mục rõ ràng
+   "Vai trò ứng dụng"/"Chức vụ"; xóa ROLE_LABEL 7 cứng); `processes.tsx` (hook `useAppRoles`,
+   skip multi-select + StepDetail tra cứu tên vai trò động từ GET /roles).
+6. **Evidence:** lint ✓, `tsc --noEmit` ✓ (0 lỗi), **56/56 test đạt**; build web sạch;
+   deploy Worker `giangdc-sop-demo-api` + Pages `giangdc-sop-app` (branch main) xong;
+   push GitHub (sau).
+   Smoke test API đạt: 4 user login đúng gói (admin 26/26 quyền; quanly 18; pheduyet 8;
+   nhanvien 11); pheduyet duyệt MEDIUM cho version của admin → APPROVED (4 mắt);
+   pheduyet duyệt HIGH → 403 INSUFFICIENT_APPROVER_LEVEL; quanly duyệt HIGH → APPROVED;
+   admin tự duyệt → APPROVED + selfApproved=1, flagged=1, role=ADMIN; GET /roles → 4 vai trò.
+   Dữ liệu demo nguyên vẹn (SAMPLE-SHIPPING, TEST-E2E-17-10, positions); quy trình test
+   SMK-D10 đã archive.
+7. Docs: `docs/PROGRESS.md`, `docs/HANDOFF.md` (file này), `docs/CHANGELOG.md`,
+   traceability `docs/T2_PLAN_DRAFT.md` §5 (dòng D-10); DECISIONS.md đã có D-10 (không ghi đè).
+
+### Chưa làm / chờ
+
+- **Kiểm thử trình duyệt D-10** (cần parent agent — subagent không có live browser):
+  https://giangdc-sop-app.pages.dev, login admin/Admin@123 → Tổng quan hiện 2 mục
+  "Vai trò ứng dụng" (Quản trị viên) + "Chức vụ" (—); Danh mục Quy trình → Sửa bước:
+  ô "Vai trò được bỏ qua (D-10)" load 4 vai trò từ API; luồng submit→duyệt vẫn đúng.
+- UI checkbox Vai trò (role_permissions) + Chức vụ ở Quản trị người dùng thuộc **T7**
+  (bảng đã sẵn sàng).
+- T3 (Execution engine): kế hoạch chưa trình/chưa duyệt.
+
 ## Phiên 17/10/2026 (D-09 — mô hình Chức vụ, subagent)
 
 ### Đã làm

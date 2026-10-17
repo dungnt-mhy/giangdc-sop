@@ -1,12 +1,7 @@
 import { createMiddleware } from 'hono/factory';
 import { getCookie } from 'hono/cookie';
-import {
-  hasPermission,
-  sha256Hex,
-  type Permission,
-  type SystemRole,
-} from '@giangdc-sop/domain';
-import { findSession, getUserRoles } from './db.js';
+import { sha256Hex, type Permission } from '@giangdc-sop/domain';
+import { findSession, getUserPermissions, getUserRoles } from './db.js';
 import type { AppEnv, AuthSession } from './env.js';
 
 /** Body lỗi chuẩn (SRS §12.2): mã máy đọc + thông điệp an toàn + request ID. */
@@ -39,8 +34,12 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
     display_name: session.display_name,
   };
   c.set('session', authSession);
-  const roles = (await getUserRoles(c.env.DB, session.user_id)) as SystemRole[];
+  // D-10: vai trò + quyền nạp từ bảng roles/role_permissions/user_roles.
+  const roles = await getUserRoles(c.env.DB, session.user_id);
+  const { permissions, seniorApprover } = await getUserPermissions(c.env.DB, session.user_id);
   c.set('roles', roles);
+  c.set('permissions', [...permissions]);
+  c.set('seniorApprover', seniorApprover);
   await next();
 });
 
@@ -48,8 +47,8 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
 export function requirePermission(permission: Permission) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const requestId = c.get('requestId') as string;
-    const roles = (c.get('roles') ?? []) as SystemRole[];
-    if (!hasPermission(roles, permission)) {
+    const permissions = new Set((c.get('permissions') ?? []) as string[]);
+    if (!permissions.has(permission)) {
       return c.json(errorBody('FORBIDDEN', 'Không đủ quyền thực hiện thao tác này.', requestId), 403);
     }
     await next();

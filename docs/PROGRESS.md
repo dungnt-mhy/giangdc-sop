@@ -130,11 +130,24 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   (rebuild `process_steps`, dọn cột 0003) + seed 5 chức vụ đã apply D1 demo; API
   GET/POST `/positions` + validate id tồn tại; web form dùng multi-select chức vụ từ API.
   56/56 test đạt; smoke test API đạt; deploy Worker + Pages xong; kiểm thử trình duyệt chờ.
+- **D-10 vai trò ứng dụng mở rộng** (17/10/2026, subagent — đã duyệt): thay 7 vai trò cứng
+  bằng bảng `roles` (Quản trị viên/Quản lý/Người phê duyệt/Người thực hiện) +
+  `role_permissions` (27 mã quyền giữ nguyên) + `user_roles`; migration 0005 đã apply D1 demo
+  (DROP `user_system_roles`); 4 mắt mới: người duyệt = user khác có `process.approve`,
+  HIGH/BLOCKING cần cờ `senior_approver`, tự duyệt chỉ senior + gắn cờ.
+  Domain viết lại (test fail-first); API `/auth/me` trả roles[]/positions[]/permissions[];
+  GET `/roles` mới; `skip.allowedRoles` validate theo mã vai trò động; web hiện 2 mục
+  "Vai trò ứng dụng"/"Chức vụ". 56/56 test đạt; smoke test API đạt (4 user đúng gói quyền,
+  pheduyet duyệt MEDIUM ok, HIGH→403, quanly HIGH ok, admin tự duyệt flagged=1);
+  deploy Worker + Pages xong; kiểm thử trình duyệt chờ (parent agent).
 
 ## Rủi ro / chờ quyết định
 
-- Follow-up D-09 (chờ ý kiến chủ sản phẩm): `skip.allowedRoles` có nên đổi sang chức vụ không?
-  UI checkbox Vai trò + Chức vụ ở Quản trị người dùng thuộc T7.
+- **Kiểm thử trình duyệt D-10** (cần parent agent — subagent không có live browser):
+  https://giangdc-sop-app.pages.dev, login admin/Admin@123 → Tổng quan hiện 2 mục
+  "Vai trò ứng dụng"/"Chức vụ"; Danh mục Quy trình → form bước: ô "Vai trò được bỏ qua"
+  load 4 vai trò từ API; luồng duyệt vẫn đúng.
+- UI checkbox Vai trò + Chức vụ ở Quản trị người dùng thuộc T7 (bảng đã sẵn sàng).
 
 - Thiếu file SRS v1.5 FINAL Rev.9 (Technical Reference).
 - Deploy tự động GitHub Actions → Cloudflare chưa dựng (cần user tự thêm

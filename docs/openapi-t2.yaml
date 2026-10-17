@@ -90,17 +90,27 @@ components:
       description: Bắt buộc cho mutation có nguy cơ retry (BR-014). Cùng key + cùng fingerprint trả lại response đã lưu; khác fingerprint -> 409 IDEMPOTENCY_CONFLICT.
 
 paths:
+  /roles:
+    get:
+      summary: Danh sách vai trò ứng dụng (D-10)
+      responses:
+        '200': { description: '{items: RoleDto[]}' }
   /positions:
     get:
       summary: Danh sách chức vụ (D-09)
       responses:
         '200': { description: OK }
     post:
-      summary: Tạo chức vụ mới (chỉ admin/manager)
+      summary: Tạo chức vụ mới (D-10: vai trò senior hoặc có user.manage)
       responses:
         '201': { description: Created }
         '403': { description: Không đủ quyền }
         '409': { description: Mã chức vụ đã tồn tại }
+  /auth/me:
+    get:
+      summary: Thông tin phiên (D-10: roles[] + positions[] + permissions[] + scopes)
+      responses:
+        '200': { description: '{user, roles: RoleDto[], positions: PositionDto[], permissions: string[], scopes}' }
   /processes:
     get:
       summary: Tìm kiếm/lọc quy trình (PRC-002)

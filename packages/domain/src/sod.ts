@@ -1,51 +1,53 @@
-import { APPROVER_ROLES, type SystemRole } from './roles.js';
+import type { Permission } from './permissions.js';
 
 /**
- * Separation-of-duties policy (OPEN-SOD-01, đã chốt 17/10/2026).
+ * Separation-of-duties policy (D-10, thay thế phần vai trò của OPEN-SOD-01).
  *
- * - Vai trò được phê duyệt: approver (role riêng), admin, manager.
- * - Mặc định 4 mắt: người yêu cầu không được tự chọn mình làm người phê duyệt.
- * - Ngoại lệ: admin/manager được tự phê duyệt khi cần thiết, nhưng BẮT BUỘC
- *   lưu vết audit và hệ thống gắn cờ.
+ * - Người phê duyệt = user (khác người yêu cầu) có vai trò chứa quyền `process.approve`.
+ * - Cờ `senior_approver` ở vai trò: HIGH/BLOCKING chỉ senior mới duyệt
+ *   (thay manager/admin cũ).
+ * - 4 mắt mặc định: người yêu cầu không được tự duyệt.
+ * - Ngoại lệ: user có vai trò senior được tự phê duyệt khi cần thiết, nhưng BẮT BUỘC
+ *   lưu vết audit và hệ thống gắn cờ (thay admin/manager cũ).
  */
 export type ExceptionSeverity = 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKING';
 
-/** Cấp tối thiểu được phê duyệt theo mức nghiêm trọng (đề xuất đã duyệt). */
-export const SEVERITY_APPROVER_LEVEL: Record<ExceptionSeverity, ReadonlySet<SystemRole>> = {
-  LOW: APPROVER_ROLES,
-  MEDIUM: APPROVER_ROLES,
-  HIGH: new Set(['manager', 'admin']),
-  BLOCKING: new Set(['manager', 'admin']),
-};
-
-/** Người này có thuộc nhóm được phê duyệt không? */
-export function canApprove(roles: readonly SystemRole[]): boolean {
-  return roles.some((r) => APPROVER_ROLES.has(r));
+/** Danh tính phê duyệt của một user: quyền hiệu lực + cờ senior (nạp từ DB). */
+export interface ApproverIdentity {
+  userId: string;
+  permissions: ReadonlySet<Permission>;
+  seniorApprover: boolean;
 }
 
-/** Người này có đạt cấp phê duyệt cho mức nghiêm trọng không? */
+/** Có quyền phê duyệt = sở hữu `process.approve` (D-10). */
+export function canApprove(permissions: ReadonlySet<Permission>): boolean {
+  return permissions.has('process.approve');
+}
+
+/** Đạt cấp phê duyệt cho mức nghiêm trọng (D-10 + D-08). */
 export function canApproveSeverity(
-  roles: readonly SystemRole[],
+  permissions: ReadonlySet<Permission>,
+  seniorApprover: boolean,
   severity: ExceptionSeverity,
 ): boolean {
-  const allowed = SEVERITY_APPROVER_LEVEL[severity];
-  return roles.some((r) => allowed.has(r));
+  if (!canApprove(permissions)) return false;
+  if (severity === 'HIGH' || severity === 'BLOCKING') return seniorApprover;
+  return true;
 }
 
 /**
  * Chọn người phê duyệt cho một yêu cầu.
- * @returns null nếu không hợp lệ (kèm lý do).
+ * @returns { ok: false, reason } khi không hợp lệ.
  */
 export function selectApprover(
   requesterId: string,
-  candidateId: string,
-  candidateRoles: readonly SystemRole[],
+  candidate: ApproverIdentity,
   severity: ExceptionSeverity,
 ): { ok: true } | { ok: false; reason: string } {
-  if (candidateId === requesterId) {
+  if (candidate.userId === requesterId) {
     return { ok: false, reason: 'SELF_APPROVAL_NOT_ALLOWED' };
   }
-  if (!canApproveSeverity(candidateRoles, severity)) {
+  if (!canApproveSeverity(candidate.permissions, candidate.seniorApprover, severity)) {
     return { ok: false, reason: 'INSUFFICIENT_APPROVER_LEVEL' };
   }
   return { ok: true };
@@ -59,15 +61,13 @@ export interface SelfApprovalCheck {
 }
 
 /**
- * Tự phê duyệt: chỉ admin/manager được phép, luôn lưu vết và gắn cờ.
- * Role approver thuần túy KHÔNG được tự phê duyệt.
+ * Tự phê duyệt (D-10): chỉ user có vai trò senior_approver, luôn lưu vết và gắn cờ.
  */
 export function checkSelfApproval(
-  roles: readonly SystemRole[],
+  seniorApprover: boolean,
   severity: ExceptionSeverity,
 ): SelfApprovalCheck {
-  const privileged = roles.includes('admin') || roles.includes('manager');
-  if (!privileged) {
+  if (!seniorApprover) {
     return { allowed: false, flagged: false, reasonRequired: false };
   }
   return {

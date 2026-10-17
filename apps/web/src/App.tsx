@@ -4,9 +4,23 @@ import { ProcessesView } from './processes.js';
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.webp`;
 
+interface AppRole {
+  id: string;
+  code: string;
+  name: string;
+  seniorApprover: boolean;
+}
+
+interface AppPosition {
+  id: string;
+  code: string;
+  name: string;
+}
+
 interface MeResponse {
   user: { id: string; username: string; displayName: string };
-  roles: string[];
+  roles: AppRole[];
+  positions: AppPosition[];
   permissions: string[];
   scopes: string[];
 }
@@ -25,16 +39,6 @@ export async function api(path: string, init?: RequestInit) {
   }
   return data;
 }
-
-const ROLE_LABEL: Record<string, string> = {
-  admin: 'Quản trị',
-  manager: 'Quản lý',
-  approver: 'Người phê duyệt',
-  author: 'Người soạn',
-  reviewer: 'Người thẩm định',
-  supervisor: 'Giám sát',
-  viewer: 'Người xem',
-};
 
 const SCOPE_LABEL: Record<string, string> = {
   'org-root': 'Công ty (trụ sở)',
@@ -344,7 +348,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
             <div className="user-avatar">{initial}</div>
             <div>
               <div className="uname">{me.user.displayName}</div>
-              <div className="urole">{ROLE_LABEL[primaryRole] ?? primaryRole}</div>
+              <div className="urole">{primaryRole ? primaryRole.name : '—'}</div>
             </div>
           </div>
           <button className="btn-ghost-light" onClick={onLogout}>
@@ -389,13 +393,23 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
 
         <div className="stat-grid">
           <div className="stat-card accent">
-            <div className="k">Vai trò</div>
+            <div className="k">Vai trò ứng dụng</div>
             <div>
-              {me.roles.map((r) => (
-                <span className="role-badge" key={r}>
-                  {ROLE_LABEL[r] ?? r}
+              {me.roles.length > 0 ? me.roles.map((r) => (
+                <span className="role-badge" key={r.id}>
+                  {r.name}
                 </span>
-              ))}
+              )) : <span className="muted">—</span>}
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="k">Chức vụ</div>
+            <div>
+              {me.positions.length > 0 ? me.positions.map((p) => (
+                <span className="scope-chip" key={p.id}>
+                  {p.name}
+                </span>
+              )) : <span className="muted">—</span>}
             </div>
           </div>
           <div className="stat-card">
