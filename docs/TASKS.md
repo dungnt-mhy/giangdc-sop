@@ -23,8 +23,10 @@ pipeline deploy demo Cloudflare.
 - Deploy demo thủ công thành công; smoke test đăng nhập + tạo lượt đạt (AC-15 mức nền móng).
 - Không có secret trong repo/log.
 
-**Phụ thuộc:** OPEN-REPO-01 (GitHub org/repo, chặn G0), OPEN-CF-01 (tài khoản Cloudflare).
-Nếu chưa có: làm phần code trước, đấu nối sau.
+**Phụ thuộc:** OPEN-REPO-01 đã chốt (17/10/2026): repo cá nhân `dungnt-mhy/giangdc-sop`,
+public — https://github.com/dungnt-mhy/giangdc-sop. Khung T0+T1 đã đẩy lên nhánh `main`.
+Còn chờ OPEN-CF-01 (tài khoản Cloudflare).
+Nếu chưa có Cloudflare: làm phần code monorepo + CI trước, đấu nối sau.
 
 ## T1.2 — Xác thực và phân quyền
 
