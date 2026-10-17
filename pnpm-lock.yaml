@@ -181,6 +181,9 @@ importers:
       '@giangdc-sop/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@giangdc-sop/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       hono:
         specifier: ^4.0.0
         version: 4.13.13
