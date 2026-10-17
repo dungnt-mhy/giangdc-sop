@@ -1,6 +1,7 @@
 import React from 'react';
 import type {
   ApprovalDecision,
+  CompletionKind,
   ExceptionSeverity,
   ProcessDto,
   ProcessStepDto,
@@ -29,6 +30,38 @@ const FAILURE_LABEL: Record<string, string> = {
   ESCALATE: 'Chuyển giám sát',
   CANCEL: 'Hủy',
 };
+
+// Nhãn tiếng Việt cho vai trò hệ thống (danh mục vai trò T1.2) — dùng cho select "Vai trò thực hiện"
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Quản trị hệ thống',
+  manager: 'Quản lý đơn vị',
+  approver: 'Người phê duyệt',
+  author: 'Người soạn thảo',
+  reviewer: 'Người thẩm định',
+  supervisor: 'Giám sát',
+  viewer: 'Người xem',
+};
+
+// Nhãn tiếng Việt cho loại yêu cầu hoàn thành = bằng chứng (PRC-006)
+const COMP_KIND_LABEL: Record<string, string> = {
+  PHOTO: 'Ảnh chụp',
+  FILE: 'Tệp đính kèm',
+  SCAN: 'Quét mã',
+  CONFIRM: 'Xác nhận',
+  FORM: 'Biểu mẫu',
+  FIELD: 'Trường dữ liệu',
+  NOTE: 'Ghi chú',
+};
+
+// Mã bước gợi ý tiếp theo: B01, B02, ... theo mã Bxx lớn nhất hiện có
+function nextStepCode(steps: { code: string }[]): string {
+  let max = 0;
+  for (const s of steps) {
+    const m = /^B(\d+)$/.exec((s.code ?? '').trim().toUpperCase());
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return 'B' + String(max + 1).padStart(2, '0');
+}
 
 function can(perms: string[], p: string): boolean {
   return perms.includes(p);
@@ -376,39 +409,86 @@ function StepForm({
 }) {
   const [f, setF] = React.useState<UpsertStepBody>({ ...EMPTY_STEP, ...initial });
   const [compLabel, setCompLabel] = React.useState('');
-  const set = (k: keyof UpsertStepBody, v: unknown) => setF({ ...f, [k]: v } as UpsertStepBody);
+  const [compKind, setCompKind] = React.useState<CompletionKind>('PHOTO');
+  const set = (k: keyof UpsertStepBody, v: unknown) =>
+    setF((prev) => ({ ...prev, [k]: v }) as UpsertStepBody);
+
+  const addCompletion = () => {
+    const label = compLabel.trim();
+    if (!label) return;
+    setF((prev) => ({
+      ...prev,
+      completion: [...(prev.completion ?? []), { kind: compKind, label, required: true }],
+    }));
+    setCompLabel('');
+  };
+
+  // Giữ tương thích dữ liệu cũ: vai trò lạ vẫn hiện để không mất thông tin
+  const roleOptions = Object.entries(ROLE_LABEL);
+  if (f.role && !ROLE_LABEL[f.role]) roleOptions.push([f.role, f.role]);
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{initial.code ? 'Sửa bước' : 'Thêm bước'}</h3>
         <div className="form-grid">
-          <div><label>Mã bước *</label><input className="input" value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="B01" /></div>
-          <div><label>Vai trò thực hiện</label><input className="input" value={f.role ?? ''} onChange={(e) => set('role', e.target.value)} placeholder="VD: Nhân viên kho" /></div>
+          <div className="field">
+            <label>Mã bước *</label>
+            <input className="input" value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="B01" />
+          </div>
+          <div className="field">
+            <label>Vai trò thực hiện</label>
+            <select className="input" value={f.role ?? ''} onChange={(e) => set('role', e.target.value || null)}>
+              <option value="">— Chưa chọn —</option>
+              {roleOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
         </div>
-        <label>Tiêu đề hành động *</label>
-        <input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="VD: Kiểm tra số khung số máy" />
-        <label>Điều kiện tiên quyết</label>
-        <input className="input" value={f.prerequisites ?? ''} onChange={(e) => set('prerequisites', e.target.value)} />
-        <div className="form-grid">
-          <div><label>Đầu vào</label><input className="input" value={f.inputs ?? ''} onChange={(e) => set('inputs', e.target.value)} /></div>
-          <div><label>Đầu ra / bàn giao</label><input className="input" value={f.outputs ?? ''} onChange={(e) => set('outputs', e.target.value)} /></div>
+        <div className="field">
+          <label>Tiêu đề hành động *</label>
+          <input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="VD: Kiểm tra số khung số máy" />
         </div>
-        <label>Hướng dẫn chi tiết</label>
-        <textarea className="input" rows={2} value={f.instructions ?? ''} onChange={(e) => set('instructions', e.target.value)} />
-        <div className="form-grid">
-          <div><label>Kết quả mong đợi</label><input className="input" value={f.expectedResult ?? ''} onChange={(e) => set('expectedResult', e.target.value)} /></div>
-          <div><label>Thời lượng mục tiêu (phút)</label><input className="input" type="number" min={0} value={f.targetDurationMin ?? ''} onChange={(e) => set('targetDurationMin', e.target.value ? Number(e.target.value) : null)} /></div>
+        <div className="field">
+          <label>Điều kiện tiên quyết</label>
+          <input className="input" value={f.prerequisites ?? ''} onChange={(e) => set('prerequisites', e.target.value)} placeholder="VD: Hoàn thành bước B01" />
         </div>
-        <label>Ghi chú</label>
-        <input className="input" value={f.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
-        <label>Cảnh báo an toàn</label>
-        <input className="input" value={f.warnings ?? ''} onChange={(e) => set('warnings', e.target.value)} />
         <div className="form-grid">
-          <div>
+          <div className="field">
+            <label>Đầu vào</label>
+            <input className="input" value={f.inputs ?? ''} onChange={(e) => set('inputs', e.target.value)} placeholder="VD: Phiếu nhập kho" />
+          </div>
+          <div className="field">
+            <label>Đầu ra / bàn giao</label>
+            <input className="input" value={f.outputs ?? ''} onChange={(e) => set('outputs', e.target.value)} placeholder="VD: Hàng đã kiểm đếm" />
+          </div>
+        </div>
+        <div className="field">
+          <label>Hướng dẫn chi tiết</label>
+          <textarea className="input" rows={3} value={f.instructions ?? ''} onChange={(e) => set('instructions', e.target.value)} placeholder="Các thao tác cần làm theo thứ tự…" />
+        </div>
+        <div className="form-grid">
+          <div className="field">
+            <label>Kết quả mong đợi</label>
+            <input className="input" value={f.expectedResult ?? ''} onChange={(e) => set('expectedResult', e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Thời lượng mục tiêu (phút)</label>
+            <input className="input" type="number" min={0} value={f.targetDurationMin ?? ''} onChange={(e) => set('targetDurationMin', e.target.value ? Number(e.target.value) : null)} />
+          </div>
+        </div>
+        <div className="field">
+          <label>Ghi chú</label>
+          <input className="input" value={f.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Cảnh báo an toàn</label>
+          <input className="input" value={f.warnings ?? ''} onChange={(e) => set('warnings', e.target.value)} placeholder="VD: Mang găng tay khi bốc xếp" />
+        </div>
+        <div className="form-grid">
+          <div className="field">
             <label className="check"><input type="checkbox" checked={f.required !== false} onChange={(e) => set('required', e.target.checked)} /> Bước bắt buộc</label>
           </div>
-          <div>
+          <div className="field">
             <label>Hướng xử lý khi không đạt (PRC-008)</label>
             <select className="input" value={f.failurePolicy ?? 'STOP'} onChange={(e) => set('failurePolicy', e.target.value)}>
               {Object.entries(FAILURE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
@@ -416,15 +496,19 @@ function StepForm({
           </div>
         </div>
 
-        <h4>Yêu cầu hoàn thành (PRC-006)</h4>
+        <h4>Yêu cầu hoàn thành = bằng chứng (PRC-006)</h4>
+        <p className="sec-desc">Bằng chứng người thực hiện phải nộp để được tính là xong bước.</p>
         <div className="inline-add">
+          <select className="input kind" value={compKind} onChange={(e) => setCompKind(e.target.value as CompletionKind)} aria-label="Loại bằng chứng">
+            {Object.entries(COMP_KIND_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
           <input className="input" value={compLabel} onChange={(e) => setCompLabel(e.target.value)} placeholder="VD: Ảnh chụp số khung" />
-          <button className="btn-small" onClick={() => { if (compLabel.trim()) { set('completion', [...(f.completion ?? []), { kind: 'NOTE', label: compLabel.trim(), required: true }]); setCompLabel(''); } }}>+ Thêm</button>
+          <button type="button" className="btn-small" onClick={addCompletion}>+ Thêm</button>
         </div>
         <div className="tag-list">
           {(f.completion ?? []).map((c, i) => (
-            <span className="perm-tag" key={i}>{c.label}
-              <button className="tag-x" onClick={() => set('completion', (f.completion ?? []).filter((_, j) => j !== i))}>×</button>
+            <span className="perm-tag" key={i}>[{COMP_KIND_LABEL[c.kind] ?? c.kind}] {c.label}
+              <button type="button" className="tag-x" onClick={() => setF((prev) => ({ ...prev, completion: (prev.completion ?? []).filter((_, j) => j !== i) }))}>×</button>
             </span>
           ))}
         </div>
@@ -432,15 +516,18 @@ function StepForm({
         <h4>Cho phép bỏ qua (PRC-007)</h4>
         <label className="check"><input type="checkbox" checked={!!f.skip?.allowed} onChange={(e) => set('skip', { ...(f.skip ?? EMPTY_STEP.skip!), allowed: e.target.checked })} /> Cho phép bỏ qua bước này</label>
         {f.skip?.allowed && (
-          <div>
-            <label>Vai trò được bỏ qua (cách nhau bởi dấu phẩy)</label>
-            <input className="input" value={(f.skip.allowedRoles ?? []).join(', ')} onChange={(e) => set('skip', { ...f.skip!, allowedRoles: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} placeholder="VD: supervisor, manager" />
+          <div className="field">
+            <label>Vai trò được bỏ qua</label>
+            <select className="input" multiple value={f.skip.allowedRoles ?? []} onChange={(e) => set('skip', { ...f.skip!, allowedRoles: Array.from(e.target.selectedOptions, (o) => o.value) })}>
+              {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <p className="sec-desc">Giữ Ctrl (hoặc chạm nhiều lần trên mobile) để chọn nhiều vai trò.</p>
           </div>
         )}
 
         <div className="modal-actions">
-          <button className="btn-ghost" onClick={onCancel}>Hủy</button>
-          <button className="btn-primary" disabled={busy} onClick={() => onSave(f)}>{busy ? 'Đang lưu…' : 'Lưu bước'}</button>
+          <button type="button" className="btn-ghost" onClick={onCancel}>Hủy</button>
+          <button type="button" className="btn-primary" disabled={busy} onClick={() => onSave(f)}>{busy ? 'Đang lưu…' : 'Lưu bước'}</button>
         </div>
       </div>
     </div>
@@ -591,7 +678,7 @@ function VersionEditor({
       <section className="section">
         <div className="sec-head">
           <h3>Các bước ({steps.length})</h3>
-          <button className="btn-small primary" onClick={() => { setEditing({ ...EMPTY_STEP }); setEditId(null); }}>+ Thêm bước</button>
+          <button className="btn-small primary" onClick={() => { setEditing({ ...EMPTY_STEP, code: nextStepCode(steps) }); setEditId(null); }}>+ Thêm bước</button>
         </div>
         <div className="step-list">
           {steps.map((s, i) => (
