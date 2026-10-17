@@ -12,6 +12,12 @@ Cập nhật: 17/10/2026 (phiên khởi tạo).
 
 - Chưa có.
 
+## Hạ tầng đã có
+
+- GitHub: `dungnt-mhy/giangdc-sop` (public) — https://github.com/dungnt-mhy/giangdc-sop.
+  OPEN-REPO-01 đã chốt (repo cá nhân, public). Khung T0+T1 đã đẩy lên nhánh `main`.
+- Cloudflare: chưa có (OPEN-CF-01 vẫn mở).
+
 ## Tiếp theo
 
 - **T1.1 — Nền móng + CI.** Chờ chủ sản phẩm chốt:
