@@ -1,5 +1,46 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 17/10/2026 (T2 — Process Catalog + Authoring & Governance, subagent)
+
+### Đã làm (T2 hoàn thành)
+
+1. **T2.1 Domain** (`packages/domain/src/process.ts` + `process.test.ts`): máy trạng thái
+   7 trạng thái theo SRS §7.1/§7.5; `isEditableState` (khóa sửa từ IN_REVIEW);
+   `resolveActivation` (1 ACTIVE + 1 SCHEDULED, supersede nguyên tử, retry idempotent);
+   `validateVersionForSubmit` (PRC-009 lỗi theo bước/trường + BR-003);
+   `checkVersionApproval` (GOV-004 + OPEN-SOD-01 + D-08). Fail-first: test viết trước
+   (fail do thiếu module), 2 test fail do test sai rồi sửa → **52/52 đạt**.
+2. **T2.2 Migration 0002** (`apps/api/migrations/0002_process_catalog.sql`): 6 bảng +
+   partial unique index cưỡng chế 1 ACTIVE/1 SCHEDULED. Apply D1 demo OK.
+   Seed `scripts/seed-t2-demo.mjs`: SAMPLE-SHIPPING 11 bước từ Shipping.pdf, v1 ACTIVE.
+3. **T2.3 API** (`apps/api/src/processes.ts`, `processDb.ts`, `idempotency.ts`):
+   21 endpoint; contract trước trong `packages/contracts/src/process.ts`.
+   Idempotency-Key bắt buộc 6 mutation (BR-014); optimistic concurrency qua revision;
+   lỗi chuẩn {code,message,requestId}. OpenAPI `docs/openapi-t2.yaml`.
+   **Smoke test live đạt toàn bộ** (curl): tạo→soạn→validate→submit→approve→release→
+   supersede nguyên tử; replay idempotent + IDEMPOTENCY_CONFLICT; VERSION_LOCKED;
+   4-mắt; D-08 (approver HIGH → 403, manager HIGH → OK); self-approve admin gắn cờ;
+   schedule kép → ACTIVATION_REJECTED (AC-02); retry release → alreadyActive.
+   Dữ liệu test T2-* đã dọn, demo chỉ giữ SAMPLE-SHIPPING.
+4. **T2.4 Web** (`apps/web/src/processes.tsx`, ~934 dòng + CSS): nav "Danh mục Quy trình"
+   live; danh sách/tìm kiếm/tạo; timeline phiên bản; trình soạn (form 12 trường PRC-005,
+   thêm/sửa/xóa/sắp xếp bước, validate, gửi thẩm định); thẩm định (góp ý, trả sửa,
+   phê duyệt theo severity, lịch sử phê duyệt). Deploy Pages production xong.
+5. Docs: `docs/T2_PLAN_DRAFT.md` §5 (bảng truy vết), TASKS/PROGRESS/HANDOFF/CHANGELOG.
+
+### Chưa làm / chờ
+
+- **AC-12 (UI desktop)**: subagent không có live browser — cần parent agent chạy kiểm thử
+  trình duyệt trên https://giangdc-sop-app.pages.dev (login admin/Admin@123 → menu
+  "Danh mục Quy trình" → tạo/soạn/validate/submit/approve/release).
+- **T3** (Execution engine): kế hoạch chưa trình/chưa duyệt.
+- Job tự kích hoạt SCHEDULED đến hạn: ngoài MVP (có endpoint activate idempotent).
+- `process.publish`/`process.deprecate` hiện chỉ admin có (mapping DEFAULT, chốt ở G2).
+
+### Cho phiên tiếp theo
+
+Trình kế hoạch T3 để chủ sản phẩm duyệt (theo AGENTS.md: chưa duyệt thì chưa code).
+
 ## Phiên 17/10/2026 (khởi tạo dự án)
 
 ### Đã làm (bổ sung — T1.1 hoàn thành)
