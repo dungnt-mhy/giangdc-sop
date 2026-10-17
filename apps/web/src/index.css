@@ -1255,10 +1255,93 @@ img.logo-img {
 
 .step-main {
   flex: 1;
+  min-width: 0; /* fix chữ bị bóp từng từ xuống dòng trên mobile */
+}
+
+.step-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.step-head-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: none;
+}
+
+.chip.sm {
+  font-size: 0.68rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.step-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.28rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.step-toggle:hover {
+  border-color: var(--blue-500);
+  color: var(--blue-600);
+}
+
+.step-ops-row {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+  flex-wrap: wrap;
+}
+
+/* Chi tiết bước khi mở rộng (collapsible) */
+.step-detail {
+  margin-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: 0.86rem;
+}
+
+.sd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.sd-row .sd-k,
+.sd-grid .sd-k {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 0.15rem;
+}
+
+.sd-v {
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+.sd-v .perm-tag {
+  margin: 0 0.3rem 0.3rem 0;
 }
 
 .step-title {
   font-weight: 600;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .step-title code {
@@ -1469,9 +1552,44 @@ img.logo-img {
   margin-top: 1.2rem;
 }
 
+.form-error {
+  color: #b42318;
+  background: #fee4e2;
+  border: 1px solid #fecdca;
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.86rem;
+  margin-bottom: 0.85rem;
+}
+
+.proc-creator {
+  font-size: 0.76rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+}
+
 @media (max-width: 860px) {
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sd-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .step-row {
+    padding: 0.7rem 0.8rem;
+    gap: 0.6rem;
+  }
+
+  .step-order {
+    width: 26px;
+    height: 26px;
+    font-size: 0.75rem;
+  }
+
+  .step-toggle {
+    padding: 0.35rem 0.6rem;
   }
 
   .ver-row {
