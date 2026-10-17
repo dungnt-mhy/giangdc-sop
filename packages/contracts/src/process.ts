@@ -48,6 +48,8 @@ export interface ProcessDto {
   status: 'ACTIVE' | 'ARCHIVED';
   createdAt: string;
   updatedAt: string;
+  /** Tên hiển thị của người tạo (JOIN users qua created_by). */
+  createdByName: string | null;
 }
 
 export interface ProcessVersionDto {
@@ -76,7 +78,15 @@ export interface ProcessStepDto {
   expectedResult: string | null;
   outputs: string | null;
   notes: string | null;
+  /**
+   * @deprecated Dùng `roles` (mảng). Giữ để tương thích đọc: = roles[0] ?? null.
+   * Khi ghi, `role` cũ được map vào `roles`.
+   */
   role: string | null;
+  /** Vai trò thực hiện bước — chọn nhiều từ danh mục vai trò hệ thống. */
+  roles: string[];
+  /** Vai trò giám sát bước — chọn nhiều, MỚI (theo yêu cầu chủ sản phẩm 17/10/2026). */
+  supervisorRoles: string[];
   required: boolean;
   targetDurationMin: number | null;
   warnings: string | null;
@@ -163,7 +173,14 @@ export interface UpsertStepBody {
   expectedResult?: string | null;
   outputs?: string | null;
   notes?: string | null;
+  /**
+   * @deprecated Dùng `roles`. Giữ để tương thích: khi nhận `role` cũ thì map vào `roles`.
+   */
   role?: string | null;
+  /** Vai trò thực hiện bước (nhiều chọn). */
+  roles?: string[];
+  /** Vai trò giám sát bước (nhiều chọn). */
+  supervisorRoles?: string[];
   required?: boolean;
   targetDurationMin?: number | null;
   warnings?: string | null;
