@@ -3,6 +3,17 @@
 > Agent KHÔNG được tự đảo ngược các quyết định dưới đây. Muốn đổi phải có
 > phê duyệt bằng văn bản của chủ sản phẩm và ghi ADR mới thay thế.
 
+## Quyết định dự án (OPEN đã chốt)
+
+| Mã | Quyết định | Ngày | Nguồn |
+|---|---|---|---|
+| OPEN-REPO-01 | Repo cá nhân `dungnt-mhy/giangdc-sop`, public. | 17/10/2026 | User |
+| OPEN-CF-01 | Dùng tài khoản Cloudflare của user; tài nguyên demo đặt tên `giangdc-sop-demo*`, tách khỏi production. | 17/10/2026 | User |
+| OPEN-SOD-01 | **Vai trò được phê duyệt:** `người phê duyệt` (role riêng), `admin`, `quản lý`. **Nguyên tắc 4 mắt mặc định:** người yêu cầu không được tự chọn mình làm người phê duyệt (quản lý A gửi quản lý B, admin A gửi admin B được phép). **Ngoại lệ:** admin/quản lý được tự phê duyệt khi cần thiết nhưng BẮT BUỘC lưu vết audit đầy đủ (actor, thời gian, lý do) và hệ thống gắn cờ các lượt tự phê duyệt trong báo cáo. Ghi đè DEFAULT của SRS (cấm tự phê duyệt) theo thứ tự ưu tiên §1 (quyết định của chủ sản phẩm). | 17/10/2026 | User |
+| OPEN-SOD-01 bổ sung | **Ánh xạ mức nghiêm trọng → cấp phê duyệt:** LOW/MEDIUM → 1 người trong 3 role (trong scope); HIGH → 1 người cấp quản lý trở lên; BLOCKING → quản lý hoặc admin + bắt buộc ghi lý do, tự duyệt ở mức này bị gắn cờ đỏ trong audit. | 17/10/2026 | Đề xuất, user duyệt |
+| OPEN-DATA-01 | **9 trường chung của Lượt thực hiện:** mã lượt (duy nhất), quy trình + phiên bản nguồn, trạng thái, người tạo, thời gian tạo, đơn vị/kho, người được giao hiện tại, hạn hoàn thành, ghi chú. Dữ liệu riêng theo quy trình đi qua mẫu biểu đã version hóa, không nhét vào trường chung. | 17/10/2026 | Đề xuất, user duyệt |
+| OPEN-SCOPE-01 | **Cây 2 cấp:** 1 org root → các đơn vị/kho (thuộc tính loại OFFICE/WAREHOUSE, không tách entity kho riêng). Mỗi lượt thuộc đúng 1 đơn vị; quyền giới hạn theo đơn vị được gán; admin cross-scope được nhưng mọi truy cập đều audit. Prototype: 1 org + 2 đơn vị mẫu. | 17/10/2026 | Đề xuất, user duyệt |
+
 ## Quyết định sản phẩm (từ Cẩm nang AI Agent v1.1, đồng bộ SRS v1.6)
 
 | Mã | Quyết định đã chốt | Ngày |
