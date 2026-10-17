@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  // GitHub Pages phục vụ app từ subpath /giangdc-sop/ nên asset phải dùng base tương đối.
-  base: '/giangdc-sop/',
+  // Base path cấu hình qua biến môi trường: GitHub Pages cần /giangdc-sop/,
+  // Cloudflare Pages (domain riêng) dùng /.
+  base: process.env.VITE_BASE_PATH ?? '/',
   build: { outDir: 'dist' },
 });
