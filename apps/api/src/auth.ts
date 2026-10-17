@@ -30,10 +30,12 @@ function newId(): string {
 
 export const authApp = new Hono<AppEnv>();
 
-/** POST /auth/login — đăng nhập nội bộ một lớp (D-02). */
+/** POST /auth/login — đăng nhập nội bộ một lớp (D-02).
+ * Body: { username, password, rememberMe? }. rememberMe=true → phiên 30 ngày,
+ * ngược lại 8 giờ. */
 authApp.post('/login', async (c) => {
   const requestId = c.get('requestId') as string;
-  let body: { username?: string; password?: string };
+  let body: { username?: string; password?: string; rememberMe?: boolean };
   try {
     body = await c.req.json();
   } catch {
@@ -41,6 +43,7 @@ authApp.post('/login', async (c) => {
   }
   const username = (body.username ?? '').trim();
   const password = body.password ?? '';
+  const rememberMe = body.rememberMe === true;
   if (!username || !password) {
     return c.json(errorBody('INVALID_CREDENTIALS', 'Tên đăng nhập hoặc mật khẩu không đúng.', requestId), 401);
   }
@@ -58,7 +61,8 @@ authApp.post('/login', async (c) => {
 
   const token = newSessionToken();
   const tokenHash = await sha256Hex(token);
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();
+  const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : SESSION_TTL_MS;
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   await createSession(c.env.DB, newId(), user.id, tokenHash, expiresAt);
   await writeAudit(c.env.DB, {
     id: newId(),
@@ -76,11 +80,12 @@ authApp.post('/login', async (c) => {
     secure: true,
     sameSite: 'None',
     path: '/',
-    maxAge: SESSION_TTL_MS / 1000,
+    maxAge: ttlMs / 1000,
   });
   return c.json({
     user: { id: user.id, username: user.username, displayName: user.display_name },
     roles,
+    rememberMe,
   });
 });
 
