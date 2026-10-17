@@ -1600,3 +1600,41 @@ img.logo-img {
     flex-direction: column;
   }
 }
+
+/* ---- Sơ đồ quy trình (ProcessDiagram, SVG) ---- */
+.proc-diagram {
+  width: 100%;
+  max-width: 430px;
+  display: block;
+  margin: 0.25rem auto;
+  font-family: inherit;
+}
+.dg-node { cursor: pointer; }
+.dg-node rect {
+  fill: #ffffff;
+  stroke: #1e3a8a;
+  stroke-width: 1.5;
+}
+.dg-node.optional rect { stroke-dasharray: 7 5; }
+.dg-node:hover rect { fill: #f0f6ff; }
+.dg-node.open rect {
+  fill: #eff6ff;
+  stroke: #2563eb;
+  stroke-width: 2.5;
+}
+.dg-code {
+  font-size: 12px;
+  font-weight: 800;
+  fill: #1e40af;
+  letter-spacing: 0.04em;
+}
+.dg-title { font-size: 13px; fill: #0f172a; }
+.dg-meta { font-size: 11px; fill: #64748b; }
+.dg-edge { stroke: #94a3b8; stroke-width: 1.5; }
+.dg-arrowhead { fill: #94a3b8; }
+.dg-terminal rect { fill: #0c1a38; }
+.dg-terminal-text {
+  fill: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
