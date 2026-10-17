@@ -141,10 +141,11 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
             <span>Nhật ký kiểm tra đầy đủ cho mọi thao tác nhạy cảm</span>
           </li>
         </ul>
-        <div className="brand-foot">Bản demo T1.2 · Dữ liệu mẫu, không dùng cho vận hành thật</div>
+        <div className="brand-foot">SOP Platform · An toàn · Minh bạch · Có kiểm soát</div>
       </div>
 
       <div className="login-form-wrap">
+        <div className="login-main">
         <div className="login-card">
           <div className="card-logo">
             <Logo size={42} />
@@ -224,6 +225,11 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
             </table>
           </details>
         </div>
+        </div>
+        <footer className="site-footer">
+          © 2026 SOP Platform · Hệ thống Quản lý Quy trình<br />
+          Bản demo T1.2 — dữ liệu mẫu, không dùng cho vận hành thật
+        </footer>
       </div>
     </div>
   );
@@ -288,10 +294,23 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   const groups = groupPermissions(me.permissions);
   const primaryRole = me.roles[0];
   const initial = me.user.displayName.charAt(0).toUpperCase();
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const today = new Date()
+    .toLocaleDateString('vi-VN', {
+      weekday: 'long',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    })
+    .replace(/^./, (c) => c.toUpperCase());
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${drawerOpen ? ' drawer-open' : ''}`}>
+      <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} aria-hidden="true" />
       <aside className="sidebar">
+        <button className="drawer-close" aria-label="Đóng menu" onClick={() => setDrawerOpen(false)}>
+          ×
+        </button>
         <div className="brand-mark">
           <Logo size={42} />
           <div>
@@ -307,6 +326,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
               className={`nav-item${item.live ? ' active' : ''}`}
               disabled={!item.live}
               title={item.live ? item.label : `${item.label} — sắp ra mắt`}
+              onClick={() => setDrawerOpen(false)}
             >
               <span className="ico">{item.ico}</span>
               {item.label}
@@ -328,12 +348,35 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
         </div>
       </aside>
 
+      <div className="mobile-topbar">
+        <button className="hamburger" aria-label="Mở menu" onClick={() => setDrawerOpen(true)}>
+          ☰
+        </button>
+        <div className="mt-brand">
+          <Logo size={30} />
+          <span>SOP PLATFORM</span>
+        </div>
+        <div className="spacer" />
+        <div className="user-avatar sm">{initial}</div>
+      </div>
+
       <main className="main">
-        <h2 className="page-title">Tổng quan</h2>
-        <p className="page-sub">
-          Xin chào, <strong>{me.user.displayName}</strong> · Tài khoản <strong>{me.user.username}</strong> ·
-          Phiên làm việc đã được xác thực phía máy chủ.
-        </p>
+        <header className="topbar">
+          <div>
+            <div className="crumb">
+              Trang chủ <span> / </span> <strong>Tổng quan</strong>
+            </div>
+            <h2 className="page-title">Tổng quan</h2>
+            <p className="page-sub">
+              Xin chào, <strong>{me.user.displayName}</strong> · Tài khoản{' '}
+              <strong>{me.user.username}</strong> · Phiên làm việc đã được xác thực phía máy chủ.
+            </p>
+          </div>
+          <div className="topbar-right">
+            <span className="today">{today}</span>
+            <span className="env-badge">DEMO</span>
+          </div>
+        </header>
 
         <div className="stat-grid">
           <div className="stat-card accent">
@@ -396,9 +439,10 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           </div>
         </section>
 
-        <p className="footer-note">
-          SOP Platform · Bản demo T1.2 · Dữ liệu mẫu, không dùng cho vận hành thật
-        </p>
+        <footer className="app-footer">
+          © 2026 SOP Platform · Hệ thống Quản lý Quy trình<br />
+          Bản demo T1.2 — dữ liệu mẫu, không dùng cho vận hành thật
+        </footer>
       </main>
     </div>
   );
