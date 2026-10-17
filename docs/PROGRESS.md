@@ -50,6 +50,12 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   KHÔNG phải bản monorepo này. Bản monorepo deploy thủ công ra URL preview
   (vd: https://f54a1129.giangdc-sop-demo.pages.dev). Chờ user quyết: tạo Pages
   project riêng cho monorepo hay gộp pipeline.
+- **GitHub Pages (17/10):** user yêu cầu link github.io → đã dựng workflow
+  `.github/workflows/deploy-pages.yml` (build apps/web với base `/giangdc-sop/`,
+  auto-deploy khi push main), bật Pages (build_type=workflow), thêm origin
+  `https://dungnt-mhy.github.io` vào CORS API. Site live tại
+  https://dungnt-mhy.github.io/giangdc-sop/ — test trình duyệt end-to-end 6/6
+  bước đạt (đăng nhập sai/đúng, 26 quyền, đăng xuất).
 
 ## Quyết định đã chốt (G1)
 
