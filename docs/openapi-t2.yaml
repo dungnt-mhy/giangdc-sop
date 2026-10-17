@@ -43,9 +43,24 @@ components:
         expectedResult: { type: string, nullable: true }
         outputs: { type: string, nullable: true }
         notes: { type: string, nullable: true }
-        role: { type: string, nullable: true, deprecated: true }
-        roles: { type: array, items: { type: string } }
-        supervisorRoles: { type: array, items: { type: string } }
+        performerPositions:
+          type: array
+          description: Chức vụ thực hiện (D-09) — mảng PositionDto
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              code: { type: string }
+              name: { type: string }
+        supervisorPositions:
+          type: array
+          description: Chức vụ giám sát (D-09) — mảng PositionDto
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              code: { type: string }
+              name: { type: string }
         required: { type: boolean }
         targetDurationMin: { type: integer, nullable: true }
         warnings: { type: string, nullable: true }
@@ -75,6 +90,17 @@ components:
       description: Bắt buộc cho mutation có nguy cơ retry (BR-014). Cùng key + cùng fingerprint trả lại response đã lưu; khác fingerprint -> 409 IDEMPOTENCY_CONFLICT.
 
 paths:
+  /positions:
+    get:
+      summary: Danh sách chức vụ (D-09)
+      responses:
+        '200': { description: OK }
+    post:
+      summary: Tạo chức vụ mới (chỉ admin/manager)
+      responses:
+        '201': { description: Created }
+        '403': { description: Không đủ quyền }
+        '409': { description: Mã chức vụ đã tồn tại }
   /processes:
     get:
       summary: Tìm kiếm/lọc quy trình (PRC-002)
@@ -188,9 +214,14 @@ paths:
                 expectedResult: { type: string, nullable: true }
                 outputs: { type: string, nullable: true }
                 notes: { type: string, nullable: true }
-                role: { type: string, nullable: true, deprecated: true }
-                roles: { type: array, items: { type: string } }
-                supervisorRoles: { type: array, items: { type: string } }
+                performerPositionIds:
+                  type: array
+                  description: Id chức vụ thực hiện (D-09)
+                  items: { type: string }
+                supervisorPositionIds:
+                  type: array
+                  description: Id chức vụ giám sát (D-09)
+                  items: { type: string }
                 required: { type: boolean, default: true }
                 targetDurationMin: { type: integer, nullable: true }
                 warnings: { type: string, nullable: true }
