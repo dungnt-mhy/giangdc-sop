@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { API_CONTRACT_VERSION, type HealthResponse } from '@giangdc-sop/contracts';
 import { authApp } from './auth.js';
+import { processApp } from './processes.js';
 import { errorBody, requestId } from './middleware.js';
 import type { AppEnv } from './env.js';
 
@@ -38,6 +39,7 @@ app.get('/health', (c) => {
 });
 
 app.route('/auth', authApp);
+app.route('/', processApp);
 
 app.notFound((c) => {
   const requestId = c.get('requestId') as string;
