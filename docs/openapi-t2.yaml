@@ -1,0 +1,338 @@
+openapi: 3.0.3
+info:
+  title: SOP Platform — Process Catalog & Governance (T2)
+  version: 0.1.0
+  description: >
+    Hợp đồng API cho phân hệ Danh mục Quy trình + Soạn thảo & Quản trị phiên bản.
+    SRS v1.6: PRC-001..009, GOV-001..007, BR-001/002/003/004/008/014.
+    Auth: cookie session `sop_session` (đăng nhập nội bộ D-02).
+    Lỗi chuẩn: {code, message, requestId} (SRS §12.2).
+servers:
+  - url: https://giangdc-sop-demo-api.iaict-platform.workers.dev
+    description: Demo Cloudflare
+
+components:
+  schemas:
+    Error:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string, example: VERSION_LOCKED }
+        message: { type: string }
+        requestId: { type: string, format: uuid }
+    ProcessVersionState:
+      type: string
+      enum: [DRAFT, IN_REVIEW, APPROVED, SCHEDULED, ACTIVE, SUPERSEDED, RETIRED]
+    ValidationIssue:
+      type: object
+      properties:
+        stepCode: { type: string, nullable: true }
+        field: { type: string }
+        code: { type: string }
+        message: { type: string }
+    ProcessStep:
+      type: object
+      properties:
+        id: { type: string }
+        versionId: { type: string }
+        code: { type: string }
+        title: { type: string }
+        prerequisites: { type: string, nullable: true }
+        inputs: { type: string, nullable: true }
+        instructions: { type: string, nullable: true }
+        expectedResult: { type: string, nullable: true }
+        outputs: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+        role: { type: string, nullable: true }
+        required: { type: boolean }
+        targetDurationMin: { type: integer, nullable: true }
+        warnings: { type: string, nullable: true }
+        sortOrder: { type: integer }
+        completion:
+          type: array
+          items:
+            type: object
+            properties:
+              kind: { type: string, enum: [FIELD, FORM, PHOTO, FILE, CONFIRM, SCAN, NOTE] }
+              label: { type: string }
+              required: { type: boolean }
+        skip:
+          type: object
+          properties:
+            allowed: { type: boolean }
+            allowedRoles: { type: array, items: { type: string } }
+            reasonRequired: { type: boolean }
+            approvalLevel: { type: string, nullable: true, enum: [LOW, MEDIUM, HIGH, BLOCKING] }
+        failurePolicy: { type: string, enum: [STOP, RETRY, ESCALATE, CANCEL] }
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string, format: uuid }
+      description: Bắt buộc cho mutation có nguy cơ retry (BR-014). Cùng key + cùng fingerprint trả lại response đã lưu; khác fingerprint -> 409 IDEMPOTENCY_CONFLICT.
+
+paths:
+  /processes:
+    get:
+      summary: Tìm kiếm/lọc quy trình (PRC-002)
+      operationId: listProcesses
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: group, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, ARCHIVED] } }
+        - { name: orgUnitId, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200': { description: '{items, total}' }
+        '403': { description: Thiếu process.view }
+    post:
+      summary: Tạo quy trình + bản nháp đầu (PRC-001). Idempotent.
+      operationId: createProcess
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name]
+              properties:
+                code: { type: string, description: 'Duy nhất toàn hệ thống (BR-001)' }
+                name: { type: string }
+                purpose: { type: string }
+                scope: { type: string }
+                applicableTo: { type: string }
+                startCondition: { type: string }
+                endCondition: { type: string }
+                ownerId: { type: string }
+                orgUnitId: { type: string }
+                reviewTrigger: { type: string }
+                processGroup: { type: string }
+      responses:
+        '201': { description: '{process, version (DRAFT v1)}' }
+        '409': { description: PROCESS_CODE_EXISTS }
+
+  /processes/{id}:
+    get:
+      summary: Chi tiết quy trình
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{process}' }, '404': { description: NOT_FOUND } }
+    patch:
+      summary: Sửa trường catalog (mã bất biến — BR-001)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{process}' } }
+
+  /processes/{id}/archive:
+    post:
+      summary: Lưu trữ thay vì xóa vật lý (BR-002)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{process status=ARCHIVED}' } }
+
+  /processes/{id}/versions:
+    get:
+      summary: Liệt kê phiên bản (mới nhất trước)
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{versions[]}' } }
+    post:
+      summary: Tạo phiên bản kế tiếp bằng copy bản gần nhất (PRC-003). Idempotent.
+      operationId: createVersion
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '201': { description: '{version (DRAFT)}' }
+
+  /versions/{versionId}:
+    get:
+      summary: Chi tiết phiên bản + bước + góp ý + phê duyệt
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{version, steps[], comments[], approvals[]}' } }
+    patch:
+      summary: Sửa trường bản nháp — chỉ DRAFT (GOV-001), optimistic concurrency
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                changeSummary: { type: string }
+                changeSize: { type: string, enum: [MINOR, MAJOR] }
+                impactAssessment: { type: string, nullable: true }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: '{version}' }
+        '409': { description: VERSION_LOCKED | CONCURRENT_MODIFICATION }
+
+  /versions/{versionId}/steps:
+    post:
+      summary: Thêm bước — chỉ DRAFT (PRC-004/005)
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, title]
+              properties:
+                code: { type: string }
+                title: { type: string }
+                prerequisites: { type: string, nullable: true }
+                inputs: { type: string, nullable: true }
+                instructions: { type: string, nullable: true }
+                expectedResult: { type: string, nullable: true }
+                outputs: { type: string, nullable: true }
+                notes: { type: string, nullable: true }
+                role: { type: string, nullable: true }
+                required: { type: boolean, default: true }
+                targetDurationMin: { type: integer, nullable: true }
+                warnings: { type: string, nullable: true }
+                completion: { type: array, items: { type: object } }
+                skip: { type: object }
+                failurePolicy: { type: string, enum: [STOP, RETRY, ESCALATE, CANCEL] }
+      responses:
+        '201': { description: '{step}' }
+        '409': { description: VERSION_LOCKED | STEP_CODE_EXISTS }
+
+  /versions/{versionId}/steps/{stepId}:
+    patch:
+      summary: Sửa bước — chỉ DRAFT
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      responses: { '200': { description: '{step}' } }
+    delete:
+      summary: Xóa bước trong nháp (chưa phát sinh lịch sử)
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      responses: { '200': { description: '{ok, deletedId}' } }
+
+  /versions/{versionId}/steps/reorder:
+    post:
+      summary: Sắp xếp bước (PRC-004) — body {order: [stepId...]}
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{steps[]}' } }
+
+  /versions/{versionId}/validate:
+    post:
+      summary: Kiểm tra bản nháp, trả lỗi theo bước/trường (PRC-009)
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: '{valid, issues: ValidationIssue[]}' }
+
+  /versions/{versionId}/submit:
+    post:
+      summary: Gửi thẩm định, khóa sửa (GOV-001). Idempotent.
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [changeSummary, changeSize, expectedRevision]
+              properties:
+                changeSummary: { type: string, description: 'Bắt buộc (BR-003)' }
+                changeSize: { type: string, enum: [MINOR, MAJOR] }
+                impactAssessment: { type: string, nullable: true, description: 'Bắt buộc khi MAJOR (BR-003)' }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: '{version (IN_REVIEW)}' }
+        '422': { description: 'VALIDATION_FAILED + issues' }
+
+  /versions/{versionId}/comments:
+    post:
+      summary: Góp ý theo phiên bản hoặc từng bước (GOV-002)
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                stepId: { type: string, nullable: true }
+                body: { type: string }
+      responses: { '201': { description: '{comments[]}' } }
+
+  /versions/{versionId}/return:
+    post:
+      summary: Trả sửa về DRAFT, giữ lịch sử góp ý (GOV-003)
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, expectedRevision]
+              properties:
+                reason: { type: string }
+                expectedRevision: { type: integer }
+      responses: { '200': { description: '{version (DRAFT)}' } }
+
+  /versions/{versionId}/approve:
+    post:
+      summary: Phê duyệt (GOV-004 + OPEN-SOD-01 + D-08). Idempotent.
+      description: >
+        4 mắt mặc định (không tự duyệt); admin/manager tự duyệt được nhưng gắn cờ.
+        D-08: LOW/MEDIUM -> approver/manager/admin; HIGH/BLOCKING -> manager/admin,
+        BLOCKING bắt buộc lý do.
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision, expectedRevision]
+              properties:
+                decision: { type: string, enum: [APPROVED, REJECTED] }
+                severity: { type: string, enum: [LOW, MEDIUM, HIGH, BLOCKING], default: MEDIUM }
+                reason: { type: string }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: '{version (APPROVED | DRAFT nếu REJECTED)}' }
+        '403': { description: SELF_APPROVAL_NOT_ALLOWED | INSUFFICIENT_APPROVER_LEVEL }
+
+  /versions/{versionId}/release:
+    post:
+      summary: Phát hành ngay hoặc theo lịch (GOV-005/GOV-006). Idempotent.
+      description: >
+        APPROVED -> ACTIVE (ngay) hoặc APPROVED -> SCHEDULED (effectiveFrom tương lai).
+        Kích hoạt bản mới supersede bản ACTIVE cũ trong cùng transaction (1 ACTIVE duy nhất).
+        Retry khi đã ACTIVE trả lại không tạo thêm (AC-02).
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                effectiveFrom: { type: string, format: date-time, nullable: true }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: '{version, superseded[]}' }
+        '409': { description: 'ACTIVATION_REJECTED (đã có SCHEDULED chờ)' }
+
+  /versions/{versionId}/activate:
+    post:
+      summary: Kích hoạt bản SCHEDULED — idempotent (AC-02)
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses: { '200': { description: '{version, alreadyActive?}' } }
+
+  /versions/{versionId}/retire:
+    post:
+      summary: Ngừng dùng bản đã thay thế (GOV-007) — lượt cũ vẫn tra cứu được
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      responses: { '200': { description: '{version (RETIRED)}' } }
