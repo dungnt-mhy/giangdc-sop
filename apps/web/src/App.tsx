@@ -1,4 +1,5 @@
 import React from 'react';
+import { ProcessesView } from './processes.js';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.webp`;
@@ -10,7 +11,7 @@ interface MeResponse {
   scopes: string[];
 }
 
-async function api(path: string, init?: RequestInit) {
+export async function api(path: string, init?: RequestInit) {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
@@ -238,7 +239,7 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
 /* ---------------- Khung app sau đăng nhập ---------------- */
 const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string }[] = [
   { key: 'overview', label: 'Tổng quan', ico: '◉', live: true },
-  { key: 'process', label: 'Danh mục Quy trình', ico: '◈', live: false, tag: 'T2' },
+  { key: 'processes', label: 'Danh mục Quy trình', ico: '◈', live: true },
   { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: false, tag: 'T3' },
   { key: 'evidence', label: 'Bằng chứng', ico: '▣', live: false, tag: 'T4' },
   { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: false, tag: 'T5' },
@@ -256,8 +257,8 @@ const MODULES: { name: string; desc: string; live: boolean; tag: string; ico: st
   {
     name: 'Danh mục Quy trình',
     desc: 'Soạn thảo, thẩm định, phê duyệt và phát hành phiên bản quy trình.',
-    live: false,
-    tag: 'Sắp có · T2',
+    live: true,
+    tag: 'Đang chạy',
     ico: '◈',
   },
   {
@@ -295,6 +296,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   const primaryRole = me.roles[0];
   const initial = me.user.displayName.charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [nav, setNav] = React.useState('overview');
   const today = new Date()
     .toLocaleDateString('vi-VN', {
       weekday: 'long',
@@ -323,10 +325,13 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           {NAV_ITEMS.map((item) => (
             <button
               key={item.key}
-              className={`nav-item${item.live ? ' active' : ''}`}
+              className={`nav-item${nav === item.key ? ' active' : ''}`}
               disabled={!item.live}
               title={item.live ? item.label : `${item.label} — sắp ra mắt`}
-              onClick={() => setDrawerOpen(false)}
+              onClick={() => {
+                setNav(item.key);
+                setDrawerOpen(false);
+              }}
             >
               <span className="ico">{item.ico}</span>
               {item.label}
@@ -361,6 +366,10 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
       </div>
 
       <main className="main">
+        {nav === 'processes' ? (
+          <ProcessesView perms={me.permissions} />
+        ) : (
+          <>
         <header className="topbar">
           <div>
             <div className="crumb">
@@ -443,6 +452,8 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           © 2026 SOP Platform · Hệ thống Quản lý Quy trình<br />
           Bản demo T1.2 — dữ liệu mẫu, không dùng cho vận hành thật
         </footer>
+          </>
+        )}
       </main>
     </div>
   );
