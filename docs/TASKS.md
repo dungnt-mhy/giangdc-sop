@@ -32,13 +32,28 @@ Hoàn thành 17/10/2026.
 - Vitest nâng lên ^5 để sạch 4 vulnerability (tinypool).
 - pnpm 12 yêu cầu `allowBuilds` trong pnpm-workspace.yaml cho esbuild/workerd.
 
-## T1.2 — Xác thực và phân quyền
+## T1.2 — Xác thực và phân quyền ✅ HOÀN THÀNH 17/10/2026
 
 **Mô tả:** đăng nhập nội bộ một lớp (D-02), session server-side, permission kiểm tra
 phía server theo scope (SRS §5, §9.7, BR-013).
 
-**Tiêu chí nghiệm thu:** AC-06 (scope), AC-11 (đăng nhập/trang chủ theo vai trò),
-AC-16 (phần auth của "Việc của tôi").
+**Đã làm:**
+- Domain: permission catalog (27 code), 7 system role, SOD policy (OPEN-SOD-01:
+  4 mắt mặc định, admin/manager tự duyệt có lưu vết + gắn cờ, ánh xạ severity),
+  scope model (OPEN-SCOPE-01), PBKDF2 hashing — 19 unit test đạt.
+- D1 migration 0001: org_units, users, user_system_roles, user_scopes, sessions, audit_events.
+- API: POST /auth/login, POST /auth/logout, GET /auth/me (trả permissions + scopes,
+  BR-013), GET /auth/check-scope (AC-06); middleware request-id, requireAuth,
+  requirePermission; lỗi chuẩn {code, message, requestId}.
+- Web: trang giới thiệu + đăng nhập (không tải dữ liệu nội bộ khi chưa login),
+  trang chủ theo vai trò (AC-11).
+- Seed demo (SAMPLE): 1 org + 2 đơn vị + 4 user (admin/quanly/pheduyet/nhanvien).
+
+**Tiêu chí nghiệm thu:**
+- ✅ AC-06: truy cập ngoài scope → 403 FORBIDDEN_SCOPE + ghi audit.
+- ✅ AC-11: landing + login + trang chủ theo vai trò.
+- ✅ AC-16 (phần auth): /auth/me trả permissions/scopes, client không tự suy quyền.
+- ✅ CI xanh, smoke test login/logout đầy đủ trên demo.
 
 ## T2 — Process Catalog + Authoring & Governance
 
