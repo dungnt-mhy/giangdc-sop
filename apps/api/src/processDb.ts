@@ -74,6 +74,31 @@ function safeJsonParse<T>(raw: string, fallback: T): T {
   }
 }
 
+/**
+ * Chuẩn hóa skip_json: khóa mới `allowedPositions` (id chức vụ, D-10);
+ * tương thích ngược khóa cũ `allowedRoles` cho dòng chưa migrate.
+ */
+function normalizeSkip(raw: unknown): {
+  allowed: boolean;
+  allowedPositions: string[];
+  reasonRequired: boolean;
+  approvalLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKING' | null;
+} {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const legacy = Array.isArray(o.allowedRoles) ? (o.allowedRoles as unknown[]) : [];
+  const cur = Array.isArray(o.allowedPositions) ? (o.allowedPositions as unknown[]) : legacy;
+  return {
+    allowed: o.allowed === true,
+    allowedPositions: cur.filter((x): x is string => typeof x === 'string'),
+    reasonRequired: o.reasonRequired !== false,
+    approvalLevel: (['LOW', 'MEDIUM', 'HIGH', 'BLOCKING'] as const).includes(
+      o.approvalLevel as 'LOW',
+    )
+      ? (o.approvalLevel as 'LOW' | 'MEDIUM' | 'HIGH' | 'BLOCKING')
+      : null,
+  };
+}
+
 export function toProcessDto(r: ProcessRow): ProcessDto {
   return {
     id: r.id,
@@ -177,12 +202,7 @@ export function toStepDto(r: StepRow, posById: Map<string, PositionDto>): Proces
     warnings: r.warnings,
     sortOrder: r.sort_order,
     completion: safeJsonParse(r.completion_json, []),
-    skip: safeJsonParse(r.skip_json, {
-      allowed: false,
-      allowedRoles: [],
-      reasonRequired: true,
-      approvalLevel: null,
-    }),
+    skip: normalizeSkip(safeJsonParse(r.skip_json, null)),
     failurePolicy: r.failure_policy as ProcessStepDto['failurePolicy'],
   };
 }
@@ -341,7 +361,7 @@ export function stepBodyToColumns(body: UpsertStepBody): Record<string, unknown>
     warnings: body.warnings ?? null,
     completion_json: JSON.stringify(body.completion ?? []),
     skip_json: JSON.stringify(
-      body.skip ?? { allowed: false, allowedRoles: [], reasonRequired: true, approvalLevel: null },
+      body.skip ?? { allowed: false, allowedPositions: [], reasonRequired: true, approvalLevel: null },
     ),
     failure_policy: body.failurePolicy ?? 'STOP',
   };
