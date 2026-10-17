@@ -11,3 +11,7 @@ database_id = "1d74db80-66b9-4ddc-99c7-dc4c8ffdf195"
 [[r2_buckets]]
 binding = "EVIDENCE"
 bucket_name = "giangdc-sop-demo"
+
+[vars]
+# Origin của web demo được phép gọi API kèm cookie.
+CORS_ORIGIN = "https://giangdc-sop-demo.pages.dev"
