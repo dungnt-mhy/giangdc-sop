@@ -1,5 +1,14 @@
 # CHANGELOG.md — Lịch sử thay đổi dự án
 
+## 17/10/2026 — T2 mở rộng: vai trò nhiều chọn + UX form/danh sách bước
+
+- Vai trò thực hiện + giám sát của bước chuyển sang nhiều chọn (`roles[]`, `supervisorRoles[]`);
+  `role` cũ deprecated nhưng tương thích 2 chiều; migration 0003 + backfill đã apply D1 demo.
+- StepForm: multi-select 7 vai trò hệ thống, validate hiện lỗi ngay trong modal (client + server).
+- Danh sách bước collapsible (mặc định gọn, bấm "Chi tiết ▾" mở rộng); fix hiển thị mobile.
+- Quy trình hiện người tạo + ngày tạo (danh sách và trang chi tiết).
+- 55/55 test đạt; lint + typecheck sạch; smoke test API đạt; deploy demo + push GitHub.
+
 ## 17/10/2026 — Khởi tạo dự án
 
 - Dựng khung repo theo cẩm nang §4 + SRS §13: AGENTS.md, README.md,
