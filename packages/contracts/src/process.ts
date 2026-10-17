@@ -27,7 +27,8 @@ export interface CompletionRequirementDto {
 
 export interface SkipPolicyDto {
   allowed: boolean;
-  allowedRoles: string[];
+  /** Chức vụ được phép bỏ qua — id trong bảng positions (D-09/D-10). */
+  allowedPositions: string[];
   reasonRequired: boolean;
   approvalLevel: ExceptionSeverity | null;
 }
