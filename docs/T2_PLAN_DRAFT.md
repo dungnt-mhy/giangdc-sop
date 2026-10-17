@@ -1,8 +1,8 @@
 # T2 — Process Catalog + Authoring & Governance — KẾ HOẠCH NHÁP
 
 > **Trạng thái: NHÁP — chưa duyệt, chưa áp dụng.** Do research chuẩn bị ngày
-> 17/10/2026 từ SRS v1.6 (không phải từ v1.5 Rev.2). Chưa ghi vào TASKS.md,
-> chưa commit. Chờ chủ sản phẩm duyệt mới triển khai (AGENTS.md §1).
+> 17/10/2026 từ SRS v1.6 (không phải từ v1.5 Rev.2). Chưa ghi vào TASKS.md.
+> Chờ chủ sản phẩm duyệt mới triển khai (AGENTS.md §1).
 
 ## 1. Phạm vi (khóa theo SRS v1.6)
 
@@ -90,14 +90,40 @@
 2. **Ánh xạ severity → cấp phê duyệt** (OPEN-SOD-01 bổ sung) có áp dụng cho
    phê duyệt *phiên bản quy trình* (GOV-004) không, hay chỉ cho phê duyệt
    ngoại lệ? Đề xuất: áp cùng mapping (bản thay đổi lớn/HIGH → quản lý trở lên).
-3. **URL evidence cho T2.5:** phụ thuộc quyết định Pages project riêng
-   (`giangdc-sop-app`) hay giữ preview URL — đang chờ ở luồng chat chính.
+3. **URL evidence cho T2.5 — ĐÃ CHỐT (17/10/2026):** dùng Pages project
+   production riêng `giangdc-sop-app` (https://giangdc-sop-app.pages.dev);
+   project `giangdc-sop-demo` đã xóa; site github.io
+   (https://dungnt-mhy.github.io/giangdc-sop/) đồng bộ qua workflow
+   deploy-pages.
 
 ## 5. Khung truy vết (điền khi triển khai, theo §20.5)
 
+> Hoàn thành 17/10/2026. Evidence: 52 unit test domain đạt (`pnpm --workspace-concurrency=1 -r test`);
+> smoke test API live trên demo (21 endpoint) đạt — xem chi tiết trong HANDOFF.
+
 | Requirement ID | Code path | Test | Evidence |
 |---|---|---|---|
-| PRC-001..011 | (điền ở PR) | (điền ở PR) | (điền ở PR) |
-| GOV-001..009 | | | |
-| BR-002/003/004 | | | |
-| AC-01/02/12 | | | |
+| PRC-001 | `apps/api/src/processes.ts` POST /processes (+migration 0002) | smoke 1: tạo process + draft v1 → 201 | curl demo đạt |
+| PRC-002 | `apps/api/src/processDb.ts` listProcesses; GET /processes | smoke: `?q=` lọc đúng | curl demo đạt |
+| PRC-003 | POST /processes/:id/versions (copy steps) | smoke 12: v2 copy đủ 2 bước | curl demo đạt |
+| PRC-004 | POST/PATCH/DELETE steps, POST reorder | smoke 5: thêm/sửa/xóa/sắp xếp | curl demo đạt |
+| PRC-005 | `packages/domain/src/process.ts` blankStep (12 trường); StepForm web | unit: blankStep đủ 12 trường | 52/52 test đạt |
+| PRC-006 | completion_json (contract §11.2); StepForm nhập yêu cầu | unit validate COMPLETION_LABEL_REQUIRED | 52/52 test đạt |
+| PRC-007 | skip_json; validate SKIP_ROLES_REQUIRED | unit + smoke | 52/52 test đạt |
+| PRC-008 | failure_policy CHECK (STOP/RETRY/ESCALATE/CANCEL) | smoke: tạo bước RETRY | curl demo đạt |
+| PRC-009 | `validateVersionForSubmit`; POST /versions/:id/validate | unit 6 case; smoke 4/6: lỗi theo bước/trường | 52/52 + curl đạt |
+| GOV-001 | submit DRAFT→IN_REVIEW; isEditableState | unit khóa sửa; smoke 7/8: VERSION_LOCKED | 52/52 + curl đạt |
+| GOV-002 | review_comments; POST comments | smoke 9: góp ý lưu đúng author | curl demo đạt |
+| GOV-003 | POST return IN_REVIEW→DRAFT + approval RETURNED | smoke 16: về DRAFT, giữ lịch sử | curl demo đạt |
+| GOV-004 | POST approve + approval_records (người/thời gian/vai trò/quyết định) | unit D-08; smoke 10/14/15 | 52/52 + curl đạt |
+| GOV-005 | POST release (ngay/theo lịch) | smoke 11/17b: ACTIVE / SCHEDULED | curl demo đạt |
+| GOV-006 | release batch nguyên tử + partial unique index | smoke 12: v1→SUPERSEDED, v2→ACTIVE | curl demo đạt |
+| GOV-007 | POST retire SUPERSEDED→RETIRED | smoke 20: RETIRED | curl demo đạt |
+| BR-001 | code UNIQUE; (process_id, version_no) UNIQUE; nextVersionNo | unit; smoke 3: mã trùng → 409 | đạt |
+| BR-002 | không DELETE vật lý process/version (chỉ ARCHIVED/RETIRE) | — (quy ước code) | review code |
+| BR-003 | validateVersionForSubmit: CHANGE_SUMMARY_REQUIRED, IMPACT_ASSESSMENT_REQUIRED | unit 3 case; smoke 6 | 52/52 + curl đạt |
+| BR-004 | execution tham chiếu version_id bất biến (T3 dùng) | — | hoãn sang T3 |
+| BR-008/014 | `apps/api/src/idempotency.ts`; Idempotency-Key REQUIRED 6 mutation | smoke 2/3: replay + CONFLICT | curl demo đạt |
+| AC-01 | nhiều process độc lập | smoke: 4 process tạo độc lập | curl demo đạt |
+| AC-02 | resolveActivation + partial index + retry alreadyActive | unit 4 case; smoke 12/13/18 | 52/52 + curl đạt |
+| AC-12 | UI desktop đầy đủ (bảng cuộn trong vùng, thao tác chuột/bàn phím) | — | kiểm tra trình duyệt (chờ parent) |
