@@ -1,5 +1,59 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (T3 — Lượt thực hiện + Chụp ảnh bằng chứng, subagent, D-12)
+
+### Đã làm
+
+1. **Contract** (`packages/contracts/src/execution.ts`, single source): `ExecutionDto`,
+   `ExecutionStepDto { id, code, title, state, assignee, supervisor, evidence[] }`,
+   `EvidenceDto { id, kind, url, uploadedBy, uploadedAt }`,
+   `CreateExecutionBody { processVersionId, assignments: [{ stepId, performerUserId, supervisorUserId }] }`.
+2. **Migration 0007** (`apps/api/migrations/0007_execution.sql`): `executions`
+   (code UNIQUE, state CHECK), `execution_steps` (snapshot bước + completion/skip JSON),
+   `evidence` (r2_key, kind, mime, size). Đã apply D1 `giangdc-sop-demo` (3 bảng OK).
+3. **Domain** (test fail-first, `packages/domain/src/execution.ts` + `execution.test.ts`):
+   step lifecycle PENDING→IN_PROGRESS→DONE (`canStepTransition`), `allRequiredStepsDone`
+   (bước tùy chọn không chặn), `photoRequired` (PRC-006), `assigneeMatchesPositions`
+   (D-09/D-12: bước không định nghĩa chức vụ thì ai cũng được gán),
+   `generateExecutionCode` (TH-YYYYMMDD-XXXX).
+4. **API** (`apps/api/src/executions.ts` + `executionDb.ts`, 10 endpoint):
+   POST /executions (idempotent, validate ACTIVE + assignments phủ đủ bước + khớp chức vụ),
+   GET /executions (?mine=1, ?state=, lọc scope), GET /executions/:id,
+   POST .../steps/:stepId/start|complete (assignee-only 403 + audit),
+   POST /executions/:id/complete (all-required-DONE) | /cancel,
+   POST .../steps/:stepId/evidence (multipart → R2 `giangdc-sop-demo`, key
+   evidence/<exec>/<step>/<uuid>.ext, validate MIME ảnh + 10MB),
+   GET /evidence/:id (serve từ R2, auth + scope), GET /assignable-users (form gán).
+   Gate: execution.create/view/operate; scope theo đơn vị (scope.manage cross-scope + audit).
+   `withIdempotency` export từ processes.ts để tái dùng; Env thêm `EVIDENCE: R2Bucket`.
+   OpenAPI `docs/openapi-t3.yaml`.
+5. **Web** (`apps/web/src/executions.tsx` mới): menu "Lượt Thực hiện" mở khóa
+   (App.tsx: live=true, export API_BASE); danh sách (Của tôi/Tất cả, progress bar);
+   chi tiết lượt (bước + người gán + ảnh thumbnail); form tạo lượt (chọn quy trình →
+   bản ACTIVE → gán người theo chức vụ, dropdown lọc); StepWorkCard
+   (Bắt đầu/Hoàn thành); PhotoCapture (`<input capture="environment">`, preview,
+   tải lên). CSS mobile-first cho màn hình chụp ảnh.
+6. **Evidence:** lint ✓, `tsc --noEmit` ✓, **65/65 test đạt** (9 test domain mới);
+   build web với VITE_API_BASE_URL (bắt buộc — bài học AGENTS.md); deploy Worker
+   `giangdc-sop-demo-api` + Pages `giangdc-sop-app` (branch main) xong.
+   Smoke test API đạt toàn bộ: tạo lượt TH-20261017-B4NE (11 bước) → start (assignee) →
+   upload ảnh PNG → DONE; tải ảnh 200 đúng MIME; người không được gán → 403
+   ASSIGNEE_ONLY; bước yêu cầu PHOTO chưa có ảnh → 400 PHOTO_REQUIRED (có ảnh → DONE);
+   gán sai chức vụ → 400 ASSIGNEE_POSITION_MISMATCH; kết thúc khi còn bước dở → 400
+   STEPS_INCOMPLETE; replay idempotency (qua withIdempotency).
+   Process test TEST-PHOTO-REQ đã archive. Dữ liệu demo nguyên vẹn.
+7. Docs: `docs/PROGRESS.md`, `docs/HANDOFF.md` (file này), `docs/CHANGELOG.md`,
+   `docs/openapi-t3.yaml`; DECISIONS.md đã có D-12 (không ghi đè).
+
+### Chưa làm / chờ
+
+- **Kiểm thử trình duyệt T3** (cần parent agent — subagent không có live browser):
+  https://giangdc-sop-app.pages.dev → menu "Lượt Thực hiện" → lượt demo
+  **TH-20261017-B4NE** (login nhanvien/Staff@123): mở B02 → Bắt đầu → Chụp ảnh
+  (camera/file) → tải lên → Hoàn thành bước; kiểm tra thumbnail hiện.
+- T4 mở rộng (các loại bằng chứng khác ngoài ảnh: FILE/SCAN...), T5, T6: chưa làm.
+- UI Quản trị người dùng (T7): chưa làm (GET /assignable-users là tạm cho form gán).
+
 ## Phiên 17/10/2026 (D-10 — vai trò ứng dụng mở rộng, subagent)
 
 ### Đã làm
