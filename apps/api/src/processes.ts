@@ -11,6 +11,7 @@ import {
 import type {
   ApproveVersionBody,
   CommentBody,
+  CreatePositionBody,
   CreateProcessBody,
   ProcessVersionDto,
   ReorderStepsBody,
@@ -29,9 +30,11 @@ import {
   getVersionSteps,
   listApprovals,
   listComments,
+  listPositions,
   listProcesses,
   listVersions,
   stepBodyToColumns,
+  unknownPositionIds,
   updateVersionState,
 } from './processDb.js';
 import { writeAudit } from './db.js';
@@ -113,6 +116,36 @@ async function withIdempotency(
 }
 
 export const processApp = new Hono<AppEnv>();
+
+/* ================= Chức vụ (D-09) ================= */
+
+/** GET /positions — danh sách chức vụ (đã đăng nhập). */
+processApp.get('/positions', requireAuth, requirePermission('process.view'), async (c) => {
+  return c.json({ items: await listPositions(c.env.DB) });
+});
+
+/** POST /positions — tạo chức vụ mới (chỉ admin/manager). */
+processApp.post('/positions', requireAuth, async (c) => {
+  const requestId = c.get('requestId') as string;
+  const roles = (c.get('roles') ?? []) as SystemRole[];
+  if (!roles.includes('admin') && !roles.includes('manager')) {
+    return c.json(errorBody('FORBIDDEN', 'Chỉ quản trị hệ thống hoặc quản lý đơn vị được tạo chức vụ.', requestId), 403);
+  }
+  const body = await parseJson<CreatePositionBody>(c);
+  if (!body || !body.code?.trim() || !body.name?.trim()) {
+    return c.json(errorBody('INVALID_REQUEST', 'Thiếu mã hoặc tên chức vụ.', requestId), 400);
+  }
+  const code = body.code.trim().toUpperCase();
+  const dup = await c.env.DB.prepare('SELECT id FROM positions WHERE code = ?1').bind(code).first();
+  if (dup) {
+    return c.json(errorBody('POSITION_CODE_EXISTS', `Mã chức vụ "${code}" đã tồn tại.`, requestId), 409);
+  }
+  const id = newId();
+  await c.env.DB.prepare('INSERT INTO positions (id, code, name) VALUES (?1, ?2, ?3)')
+    .bind(id, code, body.name.trim())
+    .run();
+  return c.json({ position: { id, code, name: body.name.trim() } }, 201);
+});
 
 /* ================= Catalog (PRC-001/002) ================= */
 
@@ -276,13 +309,15 @@ processApp.post('/processes/:id/versions', requireAuth, requirePermission('proce
         stmts.push(
           c.env.DB.prepare(
             `INSERT INTO process_steps (id, version_id, code, title, prerequisites, inputs,
-              instructions, expected_result, outputs, notes, role, roles_json, supervisor_roles_json,
+              instructions, expected_result, outputs, notes,
+              performer_position_ids_json, supervisor_position_ids_json,
               required, target_duration_min, warnings, sort_order, completion_json, skip_json, failure_policy)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)`,
           ).bind(
             newId(), versionId, s.code, s.title, s.prerequisites, s.inputs,
-            s.instructions, s.expectedResult, s.outputs, s.notes, s.role,
-            JSON.stringify(s.roles ?? []), JSON.stringify(s.supervisorRoles ?? []),
+            s.instructions, s.expectedResult, s.outputs, s.notes,
+            JSON.stringify((s.performerPositions ?? []).map((p) => p.id)),
+            JSON.stringify((s.supervisorPositions ?? []).map((p) => p.id)),
             s.required ? 1 : 0, s.targetDurationMin, s.warnings, s.sortOrder,
             JSON.stringify(s.completion), JSON.stringify(s.skip), s.failurePolicy,
           ),
@@ -367,6 +402,14 @@ processApp.post('/versions/:versionId/steps', requireAuth, requirePermission('pr
   if (!body || !body.code?.trim() || !body.title?.trim()) {
     return c.json(errorBody('INVALID_REQUEST', 'Bước phải có mã và tiêu đề hành động.', requestId), 400);
   }
+  // D-09: id chức vụ phải tồn tại trong bảng positions.
+  const unknown = await unknownPositionIds(c.env.DB, [
+    ...(body.performerPositionIds ?? []),
+    ...(body.supervisorPositionIds ?? []),
+  ]);
+  if (unknown.length > 0) {
+    return c.json(errorBody('UNKNOWN_POSITION', `Chức vụ không tồn tại: ${unknown.join(', ')}.`, requestId), 400);
+  }
   const existing = await getVersionSteps(c.env.DB, version.id);
   if (existing.some((s) => s.code === body.code.trim())) {
     return c.json(errorBody('STEP_CODE_EXISTS', `Mã bước "${body.code.trim()}" đã tồn tại.`, requestId), 409);
@@ -376,14 +419,14 @@ processApp.post('/versions/:versionId/steps', requireAuth, requirePermission('pr
   const maxOrder = existing.reduce((m, s) => Math.max(m, s.sortOrder), 0);
   await c.env.DB.prepare(
     `INSERT INTO process_steps (id, version_id, code, title, prerequisites, inputs, instructions,
-      expected_result, outputs, notes, role, roles_json, supervisor_roles_json, required,
-      target_duration_min, warnings, sort_order, completion_json, skip_json, failure_policy)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)`,
+      expected_result, outputs, notes, performer_position_ids_json, supervisor_position_ids_json,
+      required, target_duration_min, warnings, sort_order, completion_json, skip_json, failure_policy)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)`,
   )
     .bind(
       stepId, version.id, cols.code, cols.title, cols.prerequisites, cols.inputs,
-      cols.instructions, cols.expected_result, cols.outputs, cols.notes, cols.role,
-      cols.roles_json, cols.supervisor_roles_json,
+      cols.instructions, cols.expected_result, cols.outputs, cols.notes,
+      cols.performer_position_ids_json, cols.supervisor_position_ids_json,
       cols.required, cols.target_duration_min, cols.warnings, maxOrder + 1,
       cols.completion_json, cols.skip_json, cols.failure_policy,
     )
@@ -409,6 +452,13 @@ processApp.patch(
     if (!body) {
       return c.json(errorBody('INVALID_REQUEST', 'Yêu cầu không hợp lệ.', requestId), 400);
     }
+    const unknown = await unknownPositionIds(c.env.DB, [
+      ...(body.performerPositionIds ?? []),
+      ...(body.supervisorPositionIds ?? []),
+    ]);
+    if (unknown.length > 0) {
+      return c.json(errorBody('UNKNOWN_POSITION', `Chức vụ không tồn tại: ${unknown.join(', ')}.`, requestId), 400);
+    }
     const cols = stepBodyToColumns({ ...body, code: body.code || step.code, title: body.title || step.title });
     if (cols.code !== step.code) {
       const existing = await getVersionSteps(c.env.DB, version.id);
@@ -418,14 +468,15 @@ processApp.patch(
     }
     await c.env.DB.prepare(
       `UPDATE process_steps SET code=?2, title=?3, prerequisites=?4, inputs=?5, instructions=?6,
-        expected_result=?7, outputs=?8, notes=?9, role=?10, roles_json=?11, supervisor_roles_json=?12,
-        required=?13, target_duration_min=?14, warnings=?15, completion_json=?16, skip_json=?17,
-        failure_policy=?18 WHERE id=?1`,
+        expected_result=?7, outputs=?8, notes=?9,
+        performer_position_ids_json=?10, supervisor_position_ids_json=?11,
+        required=?12, target_duration_min=?13, warnings=?14, completion_json=?15, skip_json=?16,
+        failure_policy=?17 WHERE id=?1`,
     )
       .bind(
         step.id, cols.code, cols.title, cols.prerequisites, cols.inputs, cols.instructions,
-        cols.expected_result, cols.outputs, cols.notes, cols.role, cols.roles_json,
-        cols.supervisor_roles_json, cols.required,
+        cols.expected_result, cols.outputs, cols.notes,
+        cols.performer_position_ids_json, cols.supervisor_position_ids_json, cols.required,
         cols.target_duration_min, cols.warnings, cols.completion_json, cols.skip_json,
         cols.failure_policy,
       )
@@ -505,9 +556,8 @@ processApp.post('/versions/:versionId/validate', requireAuth, requirePermission(
       expectedResult: s.expectedResult,
       outputs: s.outputs,
       notes: s.notes,
-      role: s.role,
-      roles: s.roles,
-      supervisorRoles: s.supervisorRoles,
+      performerPositionIds: (s.performerPositions ?? []).map((p) => p.id),
+      supervisorPositionIds: (s.supervisorPositions ?? []).map((p) => p.id),
       required: s.required,
       targetDurationMin: s.targetDurationMin,
       warnings: s.warnings,
@@ -543,7 +593,24 @@ processApp.post('/versions/:versionId/submit', requireAuth, requirePermission('p
         impactAssessment: body.impactAssessment ?? null,
         effectiveFrom: version.effectiveFrom,
       },
-      steps.map((s) => ({ ...s })),
+      steps.map((s) => ({
+        code: s.code,
+        title: s.title,
+        prerequisites: s.prerequisites,
+        inputs: s.inputs,
+        instructions: s.instructions,
+        expectedResult: s.expectedResult,
+        outputs: s.outputs,
+        notes: s.notes,
+        performerPositionIds: (s.performerPositions ?? []).map((p) => p.id),
+        supervisorPositionIds: (s.supervisorPositions ?? []).map((p) => p.id),
+        required: s.required,
+        targetDurationMin: s.targetDurationMin,
+        warnings: s.warnings,
+        completion: s.completion,
+        skip: s.skip,
+        failurePolicy: s.failurePolicy,
+      })),
     );
     if (issues.length > 0) {
       return { status: 422, body: { ...errorBody('VALIDATION_FAILED', 'Bản nháp chưa đạt yêu cầu.', requestId), issues } };
