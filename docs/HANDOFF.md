@@ -22,7 +22,8 @@
 
 ### Chưa làm / chờ
 
-- T1.1 (nền móng + CI): chờ OPEN-REPO-01 (GitHub org/repo) và OPEN-CF-01 (Cloudflare).
+- T1.1 (nền móng + CI): OPEN-REPO-01 đã chốt (repo `dungnt-mhy/giangdc-sop`, public,
+  khung đã đẩy lên `main`); còn chờ OPEN-CF-01 (tài khoản Cloudflare) cho pipeline demo.
 - Các OPEN chặn G1: OPEN-SOD-01, OPEN-DATA-01, OPEN-SCOPE-01.
 
 ### Cho phiên tiếp theo
