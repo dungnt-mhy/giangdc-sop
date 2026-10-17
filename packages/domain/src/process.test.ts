@@ -48,7 +48,7 @@ function step(over: Partial<StepDraft> = {}): StepDraft {
     targetDurationMin: null,
     warnings: null,
     completion: [],
-    skip: { allowed: false, allowedRoles: [], reasonRequired: true, approvalLevel: null },
+    skip: { allowed: false, allowedPositions: [], reasonRequired: true, approvalLevel: null },
     failurePolicy: 'STOP',
     ...over,
   };
@@ -194,12 +194,12 @@ describe('PRC-009: validate bản nháp trả lỗi theo bước/trường', () 
     expect(issues.some((i) => i.code === 'VERSION_EMPTY')).toBe(true);
   });
 
-  it('skip cho phép nhưng không khai báo người được bỏ qua -> cảnh báo lỗi', () => {
+  it('skip cho phép nhưng không khai báo chức vụ được bỏ qua -> cảnh báo lỗi', () => {
     const issues = validateVersionForSubmit(
       draft(),
-      [step({ skip: { allowed: true, allowedRoles: [], reasonRequired: true, approvalLevel: null } })],
+      [step({ skip: { allowed: true, allowedPositions: [], reasonRequired: true, approvalLevel: null } })],
     );
-    expect(issues.some((i) => i.code === 'SKIP_ROLES_REQUIRED')).toBe(true);
+    expect(issues.some((i) => i.code === 'SKIP_POSITIONS_REQUIRED')).toBe(true);
   });
 
   it('bản nháp hợp lệ -> không có lỗi', () => {
