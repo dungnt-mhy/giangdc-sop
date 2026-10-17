@@ -56,6 +56,14 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   `https://dungnt-mhy.github.io` vào CORS API. Site live tại
   https://dungnt-mhy.github.io/giangdc-sop/ — test trình duyệt end-to-end 6/6
   bước đạt (đăng nhập sai/đúng, 26 quyền, đăng xuất).
+- **Rebuild theo yêu cầu user — repo đúng là giangdc-sop (17/10 chiều):**
+  - Tạo Pages project production riêng `giangdc-sop-app` (direct upload, không nối
+    GitHub) → https://giangdc-sop-app.pages.dev. Test trình duyệt 6/6 bước đạt.
+  - ĐÃ XÓA Pages project `giangdc-sop-demo` (chạy nhầm app của `ntdung-tds/sop-web-giangdc`).
+  - Giao diện build lại: login 2 cột (brand gradient + thẻ login + tài khoản demo),
+    dashboard Tổng quan (3 thẻ Vai trò/Đơn vị/Số quyền, 11 nhóm quyền, bảng phân hệ
+    T2–T6), responsive mobile.
+  - Base path qua `VITE_BASE_PATH` (github.io: /giangdc-sop/, Cloudflare: /).
 
 ## Quyết định đã chốt (G1)
 
