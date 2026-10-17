@@ -78,7 +78,7 @@ function safeJsonParse<T>(raw: string, fallback: T): T {
  * Chuẩn hóa skip_json: khóa mới `allowedPositions` (id chức vụ, D-10);
  * tương thích ngược khóa cũ `allowedRoles` cho dòng chưa migrate.
  */
-function normalizeSkip(raw: unknown): {
+export function normalizeSkip(raw: unknown): {
   allowed: boolean;
   allowedPositions: string[];
   reasonRequired: boolean;
