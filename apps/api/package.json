@@ -1,0 +1,22 @@
+{
+  "dependencies": {
+    "@giangdc-sop/contracts": "workspace:*",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^5.0.0",
+    "wrangler": "^4.151.0"
+  },
+  "name": "giangdc-sop-api",
+  "private": true,
+  "scripts": {
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "vitest run --passWithNoTests"
+  },
+  "type": "module",
+  "version": "0.1.0"
+}
