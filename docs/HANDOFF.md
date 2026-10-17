@@ -19,8 +19,7 @@
 
 ### Chưa làm / chờ
 
-- T1.2 (xác thực + phân quyền): chưa bắt đầu.
-- Các OPEN chặn G1: OPEN-SOD-01, OPEN-DATA-01, OPEN-SCOPE-01.
+- T2 (Process Catalog + Authoring & Governance): chưa bắt đầu. Kế hoạch chờ duyệt.
 - Deploy tự động GitHub Actions → Cloudflare: chưa dựng (cần user tự thêm
   CLOUDFLARE_API_TOKEN vào repo secret; token thật không đọc được từ vault).
 
