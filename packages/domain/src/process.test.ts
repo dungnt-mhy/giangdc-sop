@@ -42,9 +42,8 @@ function step(over: Partial<StepDraft> = {}): StepDraft {
     expectedResult: null,
     outputs: null,
     notes: null,
-    role: null,
-    roles: [],
-    supervisorRoles: [],
+    performerPositionIds: [],
+    supervisorPositionIds: [],
     required: true,
     targetDurationMin: null,
     warnings: null,
@@ -276,7 +275,8 @@ describe('blankStep: 12 trường PRC-005 có đủ', () => {
     const s = blankStep();
     for (const f of [
       'code', 'title', 'prerequisites', 'inputs', 'instructions', 'expectedResult',
-      'outputs', 'notes', 'role', 'required', 'targetDurationMin', 'warnings',
+      'outputs', 'notes', 'performerPositionIds', 'supervisorPositionIds',
+      'required', 'targetDurationMin', 'warnings',
     ] as const) {
       expect(s).toHaveProperty(f);
     }
@@ -285,23 +285,30 @@ describe('blankStep: 12 trường PRC-005 có đủ', () => {
   });
 });
 
-describe('validate roles[] / supervisorRoles[] (17/10/2026)', () => {
-  it('chấp nhận mảng vai trò hợp lệ', () => {
+describe('validate performerPositionIds[] / supervisorPositionIds[] (D-09, 17/10/2026)', () => {
+  it('chấp nhận mảng id chức vụ hợp lệ', () => {
     const issues = validateVersionForSubmit(
       draft(),
-      [step({ roles: ['manager', 'supervisor'], supervisorRoles: ['admin'] })],
+      [step({ performerPositionIds: ['pos-thu-kho', 'pos-thu-quy'], supervisorPositionIds: ['pos-giam-sat'] })],
     );
-    expect(issues.filter((i) => i.field === 'roles' || i.field === 'supervisorRoles')).toEqual([]);
+    expect(issues.filter((i) => i.field === 'performerPositionIds' || i.field === 'supervisorPositionIds')).toEqual([]);
   });
-  it('báo lỗi khi có vai trò rỗng', () => {
-    const issues = validateVersionForSubmit(draft(), [step({ roles: ['manager', '  '] })]);
-    expect(issues.some((i) => i.code === 'ROLE_EMPTY' && i.field === 'roles')).toBe(true);
+  it('báo lỗi khi có id rỗng', () => {
+    const issues = validateVersionForSubmit(draft(), [step({ performerPositionIds: ['pos-thu-kho', '  '] })]);
+    expect(issues.some((i) => i.code === 'POSITION_ID_EMPTY' && i.field === 'performerPositionIds')).toBe(true);
   });
-  it('báo lỗi khi quá 20 vai trò', () => {
+  it('báo lỗi khi quá 20 chức vụ', () => {
     const issues = validateVersionForSubmit(
       draft(),
-      [step({ supervisorRoles: Array.from({ length: 21 }, (_, i) => `r${i}`) })],
+      [step({ supervisorPositionIds: Array.from({ length: 21 }, (_, i) => `pos-${i}`) })],
     );
-    expect(issues.some((i) => i.code === 'ROLES_TOO_MANY' && i.field === 'supervisorRoles')).toBe(true);
+    expect(issues.some((i) => i.code === 'POSITION_IDS_TOO_MANY' && i.field === 'supervisorPositionIds')).toBe(true);
+  });
+  it('báo lỗi khi không phải mảng', () => {
+    const issues = validateVersionForSubmit(
+      draft(),
+      [step({ performerPositionIds: 'pos-thu-kho' as unknown as string[] })],
+    );
+    expect(issues.some((i) => i.code === 'POSITION_IDS_NOT_ARRAY' && i.field === 'performerPositionIds')).toBe(true);
   });
 });
