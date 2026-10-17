@@ -9,14 +9,20 @@ const app = new Hono<AppEnv>();
 
 app.use('*', requestId);
 
-// CORS cho web demo (Pages). Production cấu hình origin cụ thể qua biến môi trường.
+// CORS cho web demo (Pages). Production sẽ khóa origin cụ thể qua biến môi trường.
+// Demo hiện tại: cho phép mọi subdomain *.pages.dev vì mỗi lần deploy preview
+// Cloudflare sinh một URL hash mới (vd: f54a1129.giangdc-sop-demo.pages.dev).
 app.use(
   '*',
   cors({
     origin: (origin: string, c) => {
-      const allowed = c.env.CORS_ORIGIN;
-      if (!allowed) return origin;
-      return allowed.split(',').map((s: string) => s.trim()).includes(origin) ? origin : null;
+      const allowed = (c.env.CORS_ORIGIN ?? '')
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      if (allowed.includes(origin)) return origin;
+      if (/^https:\/\/[a-z0-9.-]+\.pages\.dev$/.test(origin)) return origin;
+      return null;
     },
     credentials: true,
   }),
