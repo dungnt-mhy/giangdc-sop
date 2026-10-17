@@ -65,8 +65,8 @@ export interface CompletionRequirement {
 /** Chính sách bỏ qua bước (PRC-007). */
 export interface SkipPolicy {
   allowed: boolean;
-  /** Vai trò được phép bỏ qua (PRC-007: "người được bỏ qua"). */
-  allowedRoles: string[];
+  /** Chức vụ được phép bỏ qua — id trong bảng positions (D-09/D-10). */
+  allowedPositions: string[];
   reasonRequired: boolean;
   approvalLevel: ExceptionSeverity | null;
 }
@@ -123,7 +123,7 @@ export function blankStep(): StepDraft {
     targetDurationMin: null,
     warnings: null,
     completion: [],
-    skip: { allowed: false, allowedRoles: [], reasonRequired: true, approvalLevel: null },
+    skip: { allowed: false, allowedPositions: [], reasonRequired: true, approvalLevel: null },
     failurePolicy: 'STOP',
   };
 }
@@ -201,13 +201,13 @@ export function validateVersionForSubmit(
         issues.push({ stepCode: s.code || null, field, code: 'POSITION_ID_EMPTY', message: `Bước ${tag}: ${field} chứa id chức vụ rỗng.` });
       }
     }
-    // PRC-007: cho phép bỏ qua phải khai báo người được bỏ qua.
-    if (s.skip.allowed && s.skip.allowedRoles.length === 0) {
+    // PRC-007: cho phép bỏ qua phải khai báo chức vụ được bỏ qua.
+    if (s.skip.allowed && s.skip.allowedPositions.length === 0) {
       issues.push({
         stepCode: s.code || null,
-        field: 'skip.allowedRoles',
-        code: 'SKIP_ROLES_REQUIRED',
-        message: `Bước ${tag}: cho phép bỏ qua thì phải khai báo vai trò được bỏ qua (PRC-007).`,
+        field: 'skip.allowedPositions',
+        code: 'SKIP_POSITIONS_REQUIRED',
+        message: `Bước ${tag}: cho phép bỏ qua thì phải khai báo chức vụ được bỏ qua (PRC-007).`,
       });
     }
     for (const req of s.completion) {
