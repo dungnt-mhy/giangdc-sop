@@ -1,5 +1,6 @@
 import type {
   ApprovalRecordDto,
+  PositionDto,
   ProcessDto,
   ProcessStepDto,
   ProcessVersionDto,
@@ -54,9 +55,8 @@ interface StepRow {
   expected_result: string | null;
   outputs: string | null;
   notes: string | null;
-  role: string | null;
-  roles_json: string;
-  supervisor_roles_json: string;
+  performer_position_ids_json: string;
+  supervisor_position_ids_json: string;
   required: number;
   target_duration_min: number | null;
   warnings: string | null;
@@ -112,8 +112,8 @@ export function toVersionDto(r: VersionRow): ProcessVersionDto {
   };
 }
 
-/** Chuẩn hóa mảng vai trò: trim, loại rỗng, dedupe, tối đa 20. */
-function normalizeRoles(v: unknown): string[] {
+/** Chuẩn hóa mảng id: trim, loại rỗng, dedupe, tối đa 20. */
+function normalizeIdList(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   const out: string[] = [];
   for (const r of v) {
@@ -124,8 +124,41 @@ function normalizeRoles(v: unknown): string[] {
   return out.slice(0, 20);
 }
 
-export function toStepDto(r: StepRow): ProcessStepDto {
-  const roles = normalizeRoles(safeJsonParse<unknown>(r.roles_json, []));
+interface PositionRow {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** Danh sách chức vụ (D-09), sắp theo tên. */
+export async function listPositions(db: D1Database): Promise<PositionDto[]> {
+  const rows = await db
+    .prepare('SELECT id, code, name FROM positions ORDER BY name ASC')
+    .all<PositionRow>();
+  return (rows.results ?? []).map((r) => ({ id: r.id, code: r.code, name: r.name }));
+}
+
+/** Kiểm tra các id chức vụ có tồn tại; trả về danh sách id KHÔNG tồn tại. */
+export async function unknownPositionIds(db: D1Database, ids: string[]): Promise<string[]> {
+  const clean = normalizeIdList(ids);
+  if (clean.length === 0) return [];
+  const placeholders = clean.map((_, i) => `?${i + 1}`).join(',');
+  const rows = await db
+    .prepare(`SELECT id FROM positions WHERE id IN (${placeholders})`)
+    .bind(...clean)
+    .all<{ id: string }>();
+  const found = new Set((rows.results ?? []).map((r) => r.id));
+  return clean.filter((id) => !found.has(id));
+}
+
+/** Resolve id chức vụ → DTO; id lạ giữ lại dạng {id, code: id, name: id} để không mất dữ liệu. */
+function resolvePositions(ids: string[], posById: Map<string, PositionDto>): PositionDto[] {
+  return normalizeIdList(ids).map(
+    (id) => posById.get(id) ?? { id, code: id, name: id },
+  );
+}
+
+export function toStepDto(r: StepRow, posById: Map<string, PositionDto>): ProcessStepDto {
   return {
     id: r.id,
     versionId: r.version_id,
@@ -137,10 +170,8 @@ export function toStepDto(r: StepRow): ProcessStepDto {
     expectedResult: r.expected_result,
     outputs: r.outputs,
     notes: r.notes,
-    /** @deprecated = roles[0] ?? cột role cũ ?? null (tương thích đọc). */
-    role: roles[0] ?? r.role ?? null,
-    roles,
-    supervisorRoles: normalizeRoles(safeJsonParse<unknown>(r.supervisor_roles_json, [])),
+    performerPositions: resolvePositions(safeJsonParse<string[]>(r.performer_position_ids_json, []), posById),
+    supervisorPositions: resolvePositions(safeJsonParse<string[]>(r.supervisor_position_ids_json, []), posById),
     required: r.required === 1,
     targetDurationMin: r.target_duration_min,
     warnings: r.warnings,
@@ -230,11 +261,12 @@ export async function findVersion(db: D1Database, id: string): Promise<ProcessVe
 }
 
 export async function getVersionSteps(db: D1Database, versionId: string): Promise<ProcessStepDto[]> {
+  const posById = new Map((await listPositions(db)).map((p) => [p.id, p] as const));
   const rows = await db
     .prepare('SELECT * FROM process_steps WHERE version_id = ?1 ORDER BY sort_order ASC')
     .bind(versionId)
     .all<StepRow>();
-  return (rows.results ?? []).map(toStepDto);
+  return (rows.results ?? []).map((r) => toStepDto(r, posById));
 }
 
 export async function findStep(db: D1Database, stepId: string): Promise<ProcessStepDto | null> {
@@ -242,7 +274,9 @@ export async function findStep(db: D1Database, stepId: string): Promise<ProcessS
     .prepare('SELECT * FROM process_steps WHERE id = ?1')
     .bind(stepId)
     .first<StepRow>();
-  return row ? toStepDto(row) : null;
+  if (!row) return null;
+  const posById = new Map((await listPositions(db)).map((p) => [p.id, p] as const));
+  return toStepDto(row, posById);
 }
 
 /** Update có kiểm tra revision (optimistic concurrency, SRS §12.2). Trả false nếu revision lệch. */
@@ -288,10 +322,9 @@ export async function updateVersionState(
 }
 
 export function stepBodyToColumns(body: UpsertStepBody): Record<string, unknown> {
-  // Tương thích ghi: `role` cũ map vào `roles` khi `roles` không có.
-  const roles = normalizeRoles(
-    body.roles && body.roles.length > 0 ? body.roles : body.role ? [body.role] : [],
-  );
+  // D-09: chức vụ (id tham chiếu positions), chuẩn hóa trim/dedupe/≤20.
+  const performerPositionIds = normalizeIdList(body.performerPositionIds);
+  const supervisorPositionIds = normalizeIdList(body.supervisorPositionIds);
   return {
     code: body.code.trim(),
     title: body.title.trim(),
@@ -301,9 +334,8 @@ export function stepBodyToColumns(body: UpsertStepBody): Record<string, unknown>
     expected_result: body.expectedResult ?? null,
     outputs: body.outputs ?? null,
     notes: body.notes ?? null,
-    role: roles[0] ?? body.role ?? null,
-    roles_json: JSON.stringify(roles),
-    supervisor_roles_json: JSON.stringify(normalizeRoles(body.supervisorRoles)),
+    performer_position_ids_json: JSON.stringify(performerPositionIds),
+    supervisor_position_ids_json: JSON.stringify(supervisorPositionIds),
     required: body.required === false ? 0 : 1,
     target_duration_min: body.targetDurationMin ?? null,
     warnings: body.warnings ?? null,
