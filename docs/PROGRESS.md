@@ -1,8 +1,30 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 17/10/2026 (T1.2 hoàn thành).
+Cập nhật: 18/10/2026 (T3 hoàn thành).
 
 ## Đã verified
+
+- **T3: Lượt thực hiện + Chụp ảnh bằng chứng — HOÀN THÀNH 18/10/2026 (D-12).**
+  - Contract: `packages/contracts/src/execution.ts` (ExecutionDto, ExecutionStepDto,
+    EvidenceDto, CreateExecutionBody).
+  - Migration 0007: `executions`, `execution_steps` (snapshot bước), `evidence` — đã apply D1 demo.
+  - Domain: step lifecycle PENDING→IN_PROGRESS→DONE, `allRequiredStepsDone`,
+    `photoRequired` (PRC-006), `assigneeMatchesPositions` (D-09/D-12),
+    `generateExecutionCode` (TH-YYYYMMDD-XXXX) — test fail-first, 65/65 đạt.
+  - API (`apps/api/src/executions.ts` + `executionDb.ts`): 10 endpoint
+    (tạo lượt idempotent, danh sách/lọc scope/mine, chi tiết, start/complete bước,
+    kết thúc/hủy lượt, upload ảnh multipart→R2 10MB, tải ảnh từ R2, assignable-users).
+    Gate: execution.create/view/operate + assignee-only (403 + audit) + scope.
+  - Web (`apps/web/src/executions.tsx`): menu "Lượt Thực hiện" — danh sách (Của tôi/Tất cả),
+    chi tiết lượt + tiến độ, form tạo lượt (gán người theo chức vụ), nút "Chụp ảnh"
+    (camera trên mobile), preview + tải ảnh, hoàn thành bước.
+  - Smoke test API đạt toàn bộ: tạo lượt 11 bước → start → upload ảnh → DONE;
+    người không được gán → 403; bước yêu cầu PHOTO mà chưa có ảnh → 400;
+    gán sai chức vụ → 400; kết thúc khi còn bước dở → 400.
+  - Lượt demo: **TH-20261017-B4NE** (SAMPLE-SHIPPING, 11 bước gán nhanvien, B01 đã DONE).
+  - OpenAPI: `docs/openapi-t3.yaml`.
+
+
 
 - T0: khung repo + bộ docs (AGENTS.md, README.md, docs/SPEC/PLAN/TASKS/PROGRESS/DECISIONS/HANDOFF/CHANGELOG, docs/adr).
 - T1: ADR-001 chốt stack TypeScript monorepo.
