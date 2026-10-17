@@ -7,3 +7,5 @@
 - Ghi nhận quyết định D-01..D-07 (từ Cẩm nang AI Agent v1.1).
 - ADR-001: chốt stack TypeScript monorepo (Accepted).
 - Baseline: SRS v1.6 LEAN BASELINE SYNC REV9 — đã rà soát, ĐẠT.
+- GitHub: tạo repo `dungnt-mhy/giangdc-sop` (public), đẩy khung T0+T1 lên nhánh `main`.
+  OPEN-REPO-01 chốt.
