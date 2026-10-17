@@ -126,8 +126,8 @@ function StepDetail({ step: s, positions }: { step: ProcessStepDto; positions: P
   return (
     <div className="step-detail">
       <div className="sd-grid">
-        {kv('Chức vụ thực hiện', positionNames(s.performerPositions))}
-        {kv('Chức vụ giám sát', positionNames(s.supervisorPositions))}
+        {kv('Vai trò thực hiện', positionNames(s.performerPositions))}
+        {kv('Vai trò giám sát', positionNames(s.supervisorPositions))}
       </div>
       {s.prerequisites && kv('Điều kiện tiên quyết', s.prerequisites)}
       {s.inputs && kv('Đầu vào', s.inputs)}
@@ -690,15 +690,15 @@ function StepForm({
           <input className="input" value={f.code} onChange={(e) => { set('code', e.target.value); setFerr(''); }} placeholder="B01" />
         </div>
         <PositionMultiSelect
-          label="Chức vụ thực hiện"
-          hint="Chạm để chọn/bỏ chọn từng chức vụ (giữ Ctrl trên máy tính để chọn nhiều)."
+          label="Vai trò thực hiện"
+          hint="Chạm để chọn/bỏ chọn từng vai trò (giữ Ctrl trên máy tính để chọn nhiều)."
           positions={positions}
           value={f.performerPositionIds ?? []}
           onChange={(v) => set('performerPositionIds', v)}
         />
         <PositionMultiSelect
-          label="Chức vụ giám sát"
-          hint="Chức vụ giám sát việc thực hiện bước này. Chạm để chọn/bỏ chọn từng chức vụ."
+          label="Vai trò giám sát"
+          hint="Vai trò giám sát việc thực hiện bước này. Chạm để chọn/bỏ chọn từng vai trò."
           positions={positions}
           value={f.supervisorPositionIds ?? []}
           onChange={(v) => set('supervisorPositionIds', v)}
@@ -777,7 +777,7 @@ function StepForm({
         {f.skip?.allowed && (
           <PositionMultiSelect
             label="Chức vụ được bỏ qua"
-            hint="Chạm để chọn/bỏ chọn từng chức vụ (giữ Ctrl trên máy tính để chọn nhiều)."
+            hint="Chạm để chọn/bỏ chọn từng vai trò (giữ Ctrl trên máy tính để chọn nhiều)."
             positions={positions}
             value={f.skip.allowedPositions ?? []}
             onChange={(v) => set('skip', { ...f.skip!, allowedPositions: v })}
