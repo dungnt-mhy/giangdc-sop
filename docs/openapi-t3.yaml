@@ -1,0 +1,120 @@
+# OpenAPI — Lượt thực hiện + Bằng chứng (T3, D-12)
+# EXE-001..013, EVD-001..013 (phạm vi D-12). Bổ sung cho docs/openapi-t2.yaml.
+openapi: 3.0.3
+info:
+  title: SOP API — T3 Executions & Evidence
+  version: 0.1.0
+paths:
+  /executions:
+    post:
+      summary: Tạo lượt thực hiện từ bản ACTIVE (EXE-001..004)
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [processVersionId, assignments]
+              properties:
+                processVersionId: { type: string }
+                orgUnitId: { type: string, nullable: true }
+                note: { type: string, nullable: true }
+                assignments:
+                  type: array
+                  items:
+                    type: object
+                    required: [stepId, performerUserId]
+                    properties:
+                      stepId: { type: string, description: 'id bước trong version (process_steps.id)' }
+                      performerUserId: { type: string }
+                      supervisorUserId: { type: string, nullable: true }
+      responses:
+        '201': { description: Lượt đã tạo (kèm steps snapshot) }
+        '400': { description: 'INVALID_REQUEST | ASSIGNMENTS_INCOMPLETE | UNKNOWN_STEP | UNKNOWN_USER | ASSIGNEE_POSITION_MISMATCH | IDEMPOTENCY_KEY_REQUIRED' }
+        '403': { description: 'FORBIDDEN | FORBIDDEN_SCOPE' }
+        '404': { description: VERSION_NOT_FOUND }
+        '409': { description: 'VERSION_NOT_ACTIVE | VERSION_NO_STEPS | IDEMPOTENCY_CONFLICT' }
+    get:
+      summary: Danh sách lượt (lọc scope; ?mine=1 chỉ lượt có bước gán cho tôi)
+      parameters:
+        - name: mine
+          in: query
+          schema: { type: string, enum: ['1'] }
+        - name: state
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: '{ items: ExecutionDto[] }' }
+  /executions/{id}:
+    get:
+      summary: Chi tiết lượt kèm bước + bằng chứng
+      responses:
+        '200': { description: '{ execution: ExecutionDto }' }
+        '403': { description: 'FORBIDDEN_SCOPE (+audit)' }
+        '404': { description: NOT_FOUND }
+  /executions/{id}/steps/{stepId}/start:
+    post:
+      summary: Bắt đầu bước (chỉ người được gán; PENDING -> IN_PROGRESS)
+      responses:
+        '200': { description: '{ step, executionState }' }
+        '403': { description: 'ASSIGNEE_ONLY (+audit) | FORBIDDEN_SCOPE' }
+        '409': { description: 'STEP_STATE_INVALID | EXECUTION_STATE_INVALID' }
+  /executions/{id}/steps/{stepId}/complete:
+    post:
+      summary: Hoàn thành bước (D-12: bước cấu hình PHOTO bắt buộc phải có ảnh)
+      responses:
+        '200': { description: '{ step }' }
+        '400': { description: PHOTO_REQUIRED }
+        '403': { description: 'ASSIGNEE_ONLY (+audit)' }
+        '409': { description: STEP_STATE_INVALID }
+  /executions/{id}/complete:
+    post:
+      summary: Kết thúc lượt (mọi bước bắt buộc đã DONE)
+      responses:
+        '200': { description: '{ execution }' }
+        '400': { description: STEPS_INCOMPLETE }
+        '409': { description: EXECUTION_STATE_INVALID }
+  /executions/{id}/cancel:
+    post:
+      summary: Hủy lượt
+      responses:
+        '200': { description: '{ execution }' }
+        '409': { description: EXECUTION_STATE_INVALID }
+  /executions/{id}/steps/{stepId}/evidence:
+    post:
+      summary: Upload ảnh bằng chứng (D-12; multipart, tối đa 10MB, lưu R2)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo: { type: string, format: binary }
+                kind: { type: string, enum: [PHOTO, FILE], default: PHOTO }
+      responses:
+        '201': { description: '{ evidence: EvidenceDto }' }
+        '400': { description: 'INVALID_REQUEST | INVALID_MIME | FILE_TOO_LARGE | PHOTO_REQUIRED(n/a)' }
+        '403': { description: 'ASSIGNEE_ONLY (+audit)' }
+        '409': { description: STEP_STATE_INVALID }
+  /evidence/{id}:
+    get:
+      summary: Tải file bằng chứng từ R2 (auth + scope)
+      responses:
+        '200': { description: File binary (Content-Type gốc) }
+        '404': { description: 'NOT_FOUND | FILE_MISSING' }
+  /assignable-users:
+    get:
+      summary: Danh sách user để gán bước (kèm chức vụ) — phục vụ form tạo lượt
+      responses:
+        '200': { description: '{ items: [{ id, username, displayName, positionIds }] }' }
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: { type: string }
