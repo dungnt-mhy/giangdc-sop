@@ -71,6 +71,126 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : 'Lỗi hệ thống.';
 }
 
+/** Ngày dd/mm/yyyy cho hiển thị. */
+function fmtDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('vi-VN');
+}
+
+/**
+ * Tùy chọn vai trò cho multi-select: 7 vai trò hệ thống + giữ giá trị lạ đã lưu
+ * (không mất dữ liệu cũ nhập tay trước đây).
+ */
+function roleOptionsFor(selected: readonly string[]): [string, string][] {
+  const opts: [string, string][] = Object.entries(ROLE_LABEL);
+  for (const r of selected) {
+    if (!ROLE_LABEL[r] && !opts.some(([k]) => k === r)) opts.push([r, r]);
+  }
+  return opts;
+}
+
+/** Multi-select vai trò dùng chung (thực hiện / giám sát / được bỏ qua). */
+function RoleMultiSelect({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  return (
+    <div className="field">
+      <label>{label}</label>
+      <select
+        className="input"
+        multiple
+        value={value}
+        onChange={(e) => onChange(Array.from(e.target.selectedOptions, (o) => o.value))}
+      >
+        {roleOptionsFor(value).map(([k, v]) => (
+          <option key={k} value={k}>{v}</option>
+        ))}
+      </select>
+      <p className="sec-desc">{hint}</p>
+    </div>
+  );
+}
+
+/** Nhãn tiếng Việt cho mảng vai trò, cách nhau bởi dấu phẩy. */
+function roleNames(arr: readonly string[] | undefined): string {
+  if (!arr || arr.length === 0) return '—';
+  return arr.map((r) => ROLE_LABEL[r] ?? r).join(', ');
+}
+
+/** Chi tiết đầy đủ của một bước — dùng khi mở rộng dòng bước (collapsible). */
+function StepDetail({ step: s }: { step: ProcessStepDto }) {
+  const kv = (k: string, v: React.ReactNode) => (
+    <div className="sd-row"><span className="sd-k">{k}</span><div className="sd-v">{v}</div></div>
+  );
+  return (
+    <div className="step-detail">
+      <div className="sd-grid">
+        {kv('Vai trò thực hiện', roleNames(s.roles))}
+        {kv('Vai trò giám sát', roleNames(s.supervisorRoles))}
+      </div>
+      {s.prerequisites && kv('Điều kiện tiên quyết', s.prerequisites)}
+      {s.inputs && kv('Đầu vào', s.inputs)}
+      {s.outputs && kv('Đầu ra / bàn giao', s.outputs)}
+      {s.instructions && kv('Hướng dẫn chi tiết', s.instructions)}
+      {s.expectedResult && kv('Kết quả mong đợi', s.expectedResult)}
+      {s.warnings && kv('Cảnh báo an toàn', `⚠ ${s.warnings}`)}
+      {s.targetDurationMin != null && kv('Thời lượng mục tiêu', `${s.targetDurationMin} phút`)}
+      {s.notes && kv('Ghi chú', s.notes)}
+      {s.completion.length > 0 && kv('Yêu cầu hoàn thành (bằng chứng)',
+        <span>{s.completion.map((c, i) => (
+          <span className="perm-tag" key={i}>[{COMP_KIND_LABEL[c.kind] ?? c.kind}] {c.label}</span>
+        ))}</span>)}
+      {kv('Cho phép bỏ qua', s.skip.allowed ? `Có — vai trò: ${roleNames(s.skip.allowedRoles)}` : 'Không')}
+      {kv('Xử lý khi không đạt', FAILURE_LABEL[s.failurePolicy] ?? s.failurePolicy)}
+    </div>
+  );
+}
+
+/** Dòng bước collapsible: đầu dòng gọn, bấm "Chi tiết" mở rộng toàn bộ. */
+function StepRowView({
+  index,
+  step,
+  expanded,
+  onToggle,
+  ops,
+}: {
+  index: number;
+  step: ProcessStepDto;
+  expanded: boolean;
+  onToggle: () => void;
+  ops?: React.ReactNode;
+}) {
+  return (
+    <div className={`step-row${expanded ? ' open' : ''}`}>
+      <div className="step-order">{index + 1}</div>
+      <div className="step-main">
+        <div className="step-head">
+          <div className="step-title"><code>{step.code}</code> {step.title}</div>
+          <div className="step-head-right">
+            {step.required
+              ? <span className="chip sm">Bắt buộc</span>
+              : <span className="chip sm muted">Tùy chọn</span>}
+            <button type="button" className="step-toggle" onClick={onToggle} aria-expanded={expanded}>
+              Chi tiết {expanded ? '▴' : '▾'}
+            </button>
+          </div>
+        </div>
+        {ops && <div className="step-ops-row">{ops}</div>}
+        {expanded && <StepDetail step={step} />}
+      </div>
+    </div>
+  );
+}
+
 function idemKey(): string {
   return crypto.randomUUID();
 }
@@ -162,6 +282,9 @@ function ProcessList({
               <span className={`chip ${p.status === 'ACTIVE' ? 'ok' : 'muted'}`}>
                 {p.status === 'ACTIVE' ? 'Đang dùng' : 'Đã lưu trữ'}
               </span>
+            </div>
+            <div className="proc-creator">
+              Người tạo: {p.createdByName ?? '—'} · Ngày tạo: {fmtDate(p.createdAt)}
             </div>
           </button>
         ))}
@@ -312,6 +435,9 @@ function ProcessDetail({
             {process.purpose || '—'} · Nhóm: {process.processGroup}
             {process.scope ? ` · Phạm vi: ${process.scope}` : ''}
           </p>
+          <p className="page-sub">
+            Người tạo: {process.createdByName ?? '—'} · Ngày tạo: {fmtDate(process.createdAt)}
+          </p>
         </div>
         {can(perms, 'process.edit') && (
           <button className="btn-primary" onClick={newVersion} disabled={busy}>
@@ -390,6 +516,8 @@ function ProcessDetail({
 const EMPTY_STEP: UpsertStepBody = {
   code: '',
   title: '',
+  roles: [],
+  supervisorRoles: [],
   required: true,
   failurePolicy: 'STOP',
   completion: [],
@@ -403,13 +531,14 @@ function StepForm({
   busy,
 }: {
   initial: UpsertStepBody;
-  onSave: (b: UpsertStepBody) => void;
+  onSave: (b: UpsertStepBody) => Promise<void>;
   onCancel: () => void;
   busy: boolean;
 }) {
   const [f, setF] = React.useState<UpsertStepBody>({ ...EMPTY_STEP, ...initial });
   const [compLabel, setCompLabel] = React.useState('');
   const [compKind, setCompKind] = React.useState<CompletionKind>('PHOTO');
+  const [ferr, setFerr] = React.useState('');
   const set = (k: keyof UpsertStepBody, v: unknown) =>
     setF((prev) => ({ ...prev, [k]: v }) as UpsertStepBody);
 
@@ -423,30 +552,48 @@ function StepForm({
     setCompLabel('');
   };
 
-  // Giữ tương thích dữ liệu cũ: vai trò lạ vẫn hiện để không mất thông tin
-  const roleOptions = Object.entries(ROLE_LABEL);
-  if (f.role && !ROLE_LABEL[f.role]) roleOptions.push([f.role, f.role]);
+  /** Validate client-side + hiện lỗi ngay trong modal (kể cả lỗi server). */
+  async function doSave() {
+    setFerr('');
+    if (!f.code.trim()) {
+      setFerr('Nhập mã bước (VD: B01).');
+      return;
+    }
+    if (!f.title.trim()) {
+      setFerr('Nhập tiêu đề hành động của bước.');
+      return;
+    }
+    try {
+      await onSave(f);
+    } catch (e) {
+      setFerr(errMsg(e));
+    }
+  }
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
         <h3>{initial.code ? 'Sửa bước' : 'Thêm bước'}</h3>
-        <div className="form-grid">
-          <div className="field">
-            <label>Mã bước *</label>
-            <input className="input" value={f.code} onChange={(e) => set('code', e.target.value)} placeholder="B01" />
-          </div>
-          <div className="field">
-            <label>Vai trò thực hiện</label>
-            <select className="input" value={f.role ?? ''} onChange={(e) => set('role', e.target.value || null)}>
-              <option value="">— Chưa chọn —</option>
-              {roleOptions.map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </div>
+        {ferr && <div className="form-error">{ferr}</div>}
+        <div className="field">
+          <label>Mã bước *</label>
+          <input className="input" value={f.code} onChange={(e) => { set('code', e.target.value); setFerr(''); }} placeholder="B01" />
         </div>
+        <RoleMultiSelect
+          label="Vai trò thực hiện"
+          hint="Chạm để chọn/bỏ chọn từng vai trò (giữ Ctrl trên máy tính để chọn nhiều)."
+          value={f.roles ?? []}
+          onChange={(v) => set('roles', v)}
+        />
+        <RoleMultiSelect
+          label="Vai trò giám sát"
+          hint="Vai trò giám sát việc thực hiện bước này. Chạm để chọn/bỏ chọn từng vai trò."
+          value={f.supervisorRoles ?? []}
+          onChange={(v) => set('supervisorRoles', v)}
+        />
         <div className="field">
           <label>Tiêu đề hành động *</label>
-          <input className="input" value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="VD: Kiểm tra số khung số máy" />
+          <input className="input" value={f.title} onChange={(e) => { set('title', e.target.value); setFerr(''); }} placeholder="VD: Kiểm tra số khung số máy" />
         </div>
         <div className="field">
           <label>Điều kiện tiên quyết</label>
@@ -527,7 +674,7 @@ function StepForm({
 
         <div className="modal-actions">
           <button type="button" className="btn-ghost" onClick={onCancel}>Hủy</button>
-          <button type="button" className="btn-primary" disabled={busy} onClick={() => onSave(f)}>{busy ? 'Đang lưu…' : 'Lưu bước'}</button>
+          <button type="button" className="btn-primary" disabled={busy} onClick={doSave}>{busy ? 'Đang lưu…' : 'Lưu bước'}</button>
         </div>
       </div>
     </div>
@@ -549,6 +696,7 @@ function VersionEditor({
   const [steps, setSteps] = React.useState<ProcessStepDto[]>([]);
   const [editing, setEditing] = React.useState<UpsertStepBody | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
+  const [openSteps, setOpenSteps] = React.useState<Set<string>>(new Set());
   const [issues, setIssues] = React.useState<ValidationIssueDto[]>([]);
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
@@ -583,10 +731,19 @@ function VersionEditor({
       await load();
     } catch (e) {
       setError(errMsg(e));
+      throw e; // để StepForm bắt và hiện lỗi ngay trong modal (YC2)
     } finally {
       setBusy(false);
     }
   }
+
+  const toggleStep = (id: string) =>
+    setOpenSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   async function delStep(id: string) {
     if (!window.confirm('Xóa bước này khỏi bản nháp?')) return;
@@ -682,31 +839,30 @@ function VersionEditor({
         </div>
         <div className="step-list">
           {steps.map((s, i) => (
-            <div className="step-row" key={s.id}>
-              <div className="step-order">{i + 1}</div>
-              <div className="step-main">
-                <div className="step-title"><code>{s.code}</code> {s.title}</div>
-                <div className="step-meta">
-                  {s.required ? 'Bắt buộc' : 'Tùy chọn'} · Xử lý không đạt: {FAILURE_LABEL[s.failurePolicy]}
-                  {s.completion.length > 0 && ` · ${s.completion.length} yêu cầu hoàn thành`}
-                  {s.skip.allowed && ' · Cho phép bỏ qua'}
-                </div>
-              </div>
-              <div className="step-ops">
-                <button className="btn-icon" title="Lên" onClick={() => move(s.id, -1)}>↑</button>
-                <button className="btn-icon" title="Xuống" onClick={() => move(s.id, 1)}>↓</button>
-                <button className="btn-icon" title="Sửa" onClick={() => {
-                  setEditing({
-                    code: s.code, title: s.title, prerequisites: s.prerequisites, inputs: s.inputs,
-                    instructions: s.instructions, expectedResult: s.expectedResult, outputs: s.outputs,
-                    notes: s.notes, role: s.role, required: s.required, targetDurationMin: s.targetDurationMin,
-                    warnings: s.warnings, completion: s.completion, skip: s.skip, failurePolicy: s.failurePolicy,
-                  });
-                  setEditId(s.id);
-                }}>✎</button>
-                <button className="btn-icon danger" title="Xóa" onClick={() => delStep(s.id)}>×</button>
-              </div>
-            </div>
+            <StepRowView
+              key={s.id}
+              index={i}
+              step={s}
+              expanded={openSteps.has(s.id)}
+              onToggle={() => toggleStep(s.id)}
+              ops={
+                <>
+                  <button className="btn-icon" title="Lên" onClick={() => move(s.id, -1)}>↑</button>
+                  <button className="btn-icon" title="Xuống" onClick={() => move(s.id, 1)}>↓</button>
+                  <button className="btn-icon" title="Sửa" onClick={() => {
+                    setEditing({
+                      code: s.code, title: s.title, prerequisites: s.prerequisites, inputs: s.inputs,
+                      instructions: s.instructions, expectedResult: s.expectedResult, outputs: s.outputs,
+                      notes: s.notes, roles: s.roles ?? [], supervisorRoles: s.supervisorRoles ?? [],
+                      required: s.required, targetDurationMin: s.targetDurationMin,
+                      warnings: s.warnings, completion: s.completion, skip: s.skip, failurePolicy: s.failurePolicy,
+                    });
+                    setEditId(s.id);
+                  }}>✎</button>
+                  <button className="btn-icon danger" title="Xóa" onClick={() => delStep(s.id)}>×</button>
+                </>
+              }
+            />
           ))}
           {steps.length === 0 && <div className="empty">Chưa có bước nào — thêm bước đầu tiên.</div>}
         </div>
@@ -769,6 +925,14 @@ function VersionReview({
   const [decision, setDecision] = React.useState<ApprovalDecision>('APPROVED');
   const [severity, setSeverity] = React.useState<ExceptionSeverity>('MEDIUM');
   const [approveReason, setApproveReason] = React.useState('');
+  const [openSteps, setOpenSteps] = React.useState<Set<string>>(new Set());
+  const toggleStep = (id: string) =>
+    setOpenSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const load = React.useCallback(async () => {
     try {
@@ -867,17 +1031,13 @@ function VersionReview({
         <h3>Các bước ({steps.length})</h3>
         <div className="step-list">
           {steps.map((s, i) => (
-            <div className="step-row" key={s.id}>
-              <div className="step-order">{i + 1}</div>
-              <div className="step-main">
-                <div className="step-title"><code>{s.code}</code> {s.title}</div>
-                {s.instructions && <div className="step-desc">{s.instructions}</div>}
-                <div className="step-meta">
-                  {s.required ? 'Bắt buộc' : 'Tùy chọn'} · Xử lý không đạt: {FAILURE_LABEL[s.failurePolicy]}
-                  {s.warnings && ` · ⚠ ${s.warnings}`}
-                </div>
-              </div>
-            </div>
+            <StepRowView
+              key={s.id}
+              index={i}
+              step={s}
+              expanded={openSteps.has(s.id)}
+              onToggle={() => toggleStep(s.id)}
+            />
           ))}
         </div>
       </section>
