@@ -78,15 +78,10 @@ export interface ProcessStepDto {
   expectedResult: string | null;
   outputs: string | null;
   notes: string | null;
-  /**
-   * @deprecated Dùng `roles` (mảng). Giữ để tương thích đọc: = roles[0] ?? null.
-   * Khi ghi, `role` cũ được map vào `roles`.
-   */
-  role: string | null;
-  /** Vai trò thực hiện bước — chọn nhiều từ danh mục vai trò hệ thống. */
-  roles: string[];
-  /** Vai trò giám sát bước — chọn nhiều, MỚI (theo yêu cầu chủ sản phẩm 17/10/2026). */
-  supervisorRoles: string[];
+  /** Chức vụ thực hiện bước — nhiều chọn (D-09: chức vụ, không phải vai trò hệ thống). */
+  performerPositions: PositionDto[];
+  /** Chức vụ giám sát bước — nhiều chọn (D-09). */
+  supervisorPositions: PositionDto[];
   required: boolean;
   targetDurationMin: number | null;
   warnings: string | null;
@@ -94,6 +89,22 @@ export interface ProcessStepDto {
   completion: CompletionRequirementDto[];
   skip: SkipPolicyDto;
   failurePolicy: FailurePolicy;
+}
+
+/**
+ * Chức vụ (D-09): khái niệm riêng với vai trò hệ thống.
+ * Vai trò hệ thống (7 role) chỉ dùng phân quyền; chức vụ (thủ kho, thủ quỹ...)
+ * gắn vào từng bước của quy trình và gán cho người dùng qua user_positions.
+ */
+export interface PositionDto {
+  id: string;
+  code: string;
+  name: string;
+}
+
+export interface CreatePositionBody {
+  code: string;
+  name: string;
 }
 
 export interface ReviewCommentDto {
@@ -173,14 +184,10 @@ export interface UpsertStepBody {
   expectedResult?: string | null;
   outputs?: string | null;
   notes?: string | null;
-  /**
-   * @deprecated Dùng `roles`. Giữ để tương thích: khi nhận `role` cũ thì map vào `roles`.
-   */
-  role?: string | null;
-  /** Vai trò thực hiện bước (nhiều chọn). */
-  roles?: string[];
-  /** Vai trò giám sát bước (nhiều chọn). */
-  supervisorRoles?: string[];
+  /** Chức vụ thực hiện bước — nhiều chọn, id tham chiếu bảng positions (D-09). */
+  performerPositionIds?: string[];
+  /** Chức vụ giám sát bước — nhiều chọn, id tham chiếu bảng positions (D-09). */
+  supervisorPositionIds?: string[];
   required?: boolean;
   targetDurationMin?: number | null;
   warnings?: string | null;
