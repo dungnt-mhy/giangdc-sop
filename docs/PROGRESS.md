@@ -79,6 +79,8 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   - Dashboard có header `.topbar` (breadcrumb Trang chủ/Tổng quan, tiêu đề, ngày
     tiếng Việt tự động, badge DEMO) + footer `.app-footer`.
   - Test desktop đạt; mobile kiểm tra qua CSS build.
+  - Tinh chỉnh thêm mobile: sidebar gọn (menu cuộn ngang), brand panel gọn
+    (ẩn đoạn dài, tới form nhanh), theme-color #0c1a38, bảng demo cuộn ngang.
 
 ## Quyết định đã chốt (G1)
 
