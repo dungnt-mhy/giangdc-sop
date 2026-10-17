@@ -68,10 +68,13 @@ authApp.post('/login', async (c) => {
   });
 
   const roles = (await getUserRoles(c.env.DB, user.id)) as SystemRole[];
+  // Demo: web (pages.dev) và API (workers.dev) khác site, trình duyệt chỉ gửi
+  // cookie trong fetch cross-site khi SameSite=None. Production cùng origin
+  // sẽ dùng Lax để giảm rủi ro CSRF.
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
-    sameSite: 'Lax',
+    sameSite: 'None',
     path: '/',
     maxAge: SESSION_TTL_MS / 1000,
   });
