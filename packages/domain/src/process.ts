@@ -84,14 +84,10 @@ export interface ProcessStepFields {
   expectedResult: string | null;
   outputs: string | null;
   notes: string | null;
-  /**
-   * @deprecated Dùng `roles` (mảng). Giữ để tương thích: = roles[0] ?? null.
-   */
-  role: string | null;
-  /** Vai trò thực hiện bước — nhiều chọn từ danh mục vai trò hệ thống. */
-  roles: string[];
-  /** Vai trò giám sát bước — nhiều chọn (yêu cầu chủ sản phẩm 17/10/2026). */
-  supervisorRoles: string[];
+  /** Id chức vụ thực hiện bước — nhiều chọn, tham chiếu bảng positions (D-09). */
+  performerPositionIds: string[];
+  /** Id chức vụ giám sát bước — nhiều chọn (D-09). */
+  supervisorPositionIds: string[];
   required: boolean;
   targetDurationMin: number | null;
   warnings: string | null;
@@ -121,9 +117,8 @@ export function blankStep(): StepDraft {
     expectedResult: null,
     outputs: null,
     notes: null,
-    role: null,
-    roles: [],
-    supervisorRoles: [],
+    performerPositionIds: [],
+    supervisorPositionIds: [],
     required: true,
     targetDurationMin: null,
     warnings: null,
@@ -193,17 +188,17 @@ export function validateVersionForSubmit(
     if (!s.title?.trim()) {
       issues.push({ stepCode: s.code || null, field: 'title', code: 'STEP_TITLE_REQUIRED', message: `Bước ${tag}: thiếu tiêu đề hành động.` });
     }
-    // Vai trò thực hiện / giám sát: mảng chuỗi non-empty đã trim, tối đa 20.
-    for (const [field, arr] of [['roles', s.roles ?? []], ['supervisorRoles', s.supervisorRoles ?? []]] as const) {
+    // Chức vụ thực hiện / giám sát (D-09): mảng id đã trim, non-empty, tối đa 20.
+    for (const [field, arr] of [['performerPositionIds', s.performerPositionIds ?? []], ['supervisorPositionIds', s.supervisorPositionIds ?? []]] as const) {
       if (!Array.isArray(arr)) {
-        issues.push({ stepCode: s.code || null, field, code: 'ROLES_NOT_ARRAY', message: `Bước ${tag}: ${field} phải là mảng.` });
+        issues.push({ stepCode: s.code || null, field, code: 'POSITION_IDS_NOT_ARRAY', message: `Bước ${tag}: ${field} phải là mảng.` });
         continue;
       }
       if (arr.length > 20) {
-        issues.push({ stepCode: s.code || null, field, code: 'ROLES_TOO_MANY', message: `Bước ${tag}: ${field} tối đa 20 vai trò.` });
+        issues.push({ stepCode: s.code || null, field, code: 'POSITION_IDS_TOO_MANY', message: `Bước ${tag}: ${field} tối đa 20 chức vụ.` });
       }
       if (arr.some((r) => typeof r !== 'string' || !r.trim())) {
-        issues.push({ stepCode: s.code || null, field, code: 'ROLE_EMPTY', message: `Bước ${tag}: ${field} chứa vai trò rỗng.` });
+        issues.push({ stepCode: s.code || null, field, code: 'POSITION_ID_EMPTY', message: `Bước ${tag}: ${field} chứa id chức vụ rỗng.` });
       }
     }
     // PRC-007: cho phép bỏ qua phải khai báo người được bỏ qua.
