@@ -835,26 +835,14 @@ img.logo-img {
   .sidebar {
     position: static;
     height: auto;
-    padding: 0.9rem 0.8rem;
-  }
-
-  .sidebar .brand-mark {
-    margin-bottom: 0.7rem;
-    padding: 0 0.3rem;
-  }
-
-  .sidebar .brand-mark .logo-img {
-    width: 34px;
-    height: 34px;
-    border-radius: 10px;
+    flex-direction: column;
+    padding: 1rem;
   }
 
   .sidebar nav {
     display: flex;
     overflow-x: auto;
     gap: 0.3rem;
-    padding-bottom: 0.2rem;
-    -webkit-overflow-scrolling: touch;
   }
 
   .nav-label {
@@ -863,13 +851,6 @@ img.logo-img {
 
   .nav-item {
     white-space: nowrap;
-    padding: 0.55rem 0.7rem;
-    font-size: 0.86rem;
-  }
-
-  .nav-item .ico {
-    width: 26px;
-    height: 26px;
   }
 
   .nav-item .soon-tag {
@@ -878,17 +859,8 @@ img.logo-img {
 
   .sidebar-foot {
     border-top: none;
-    margin-top: 0.7rem;
-    padding: 0 0.3rem;
-  }
-
-  .user-chip .uname {
-    max-width: 40vw;
-  }
-
-  .btn-ghost-light {
-    margin-top: 0.6rem;
-    padding: 0.6rem;
+    margin-top: 0.8rem;
+    padding-top: 0;
   }
 
   .main {
@@ -915,21 +887,13 @@ img.logo-img {
   }
 
   .login-brand {
-    padding: 2rem 1.5rem 1.8rem;
+    padding: 2.6rem 1.8rem;
   }
 
-  .brand-mark {
-    margin-bottom: 1.1rem;
-  }
-
-  /* Mobile: gọn để tới form nhanh — giữ logo + tiêu đề, ẩn đoạn văn dài */
   .login-brand h1 {
-    font-size: 1.3rem;
-    margin-bottom: 0;
+    font-size: 1.55rem;
   }
 
-  .login-brand p.lead,
-  .login-brand .brand-points,
   .brand-foot {
     display: none;
   }
@@ -937,13 +901,5 @@ img.logo-img {
   .stat-grid,
   .module-grid {
     grid-template-columns: 1fr;
-  }
-
-  .login-card {
-    padding: 2rem 1.5rem 1.8rem;
-  }
-
-  .demo-accounts {
-    overflow-x: auto;
   }
 }
