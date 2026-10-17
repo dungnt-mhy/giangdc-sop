@@ -12,3 +12,6 @@
 - Cloudflare: tạo D1 `giangdc-sop-demo`, R2 bucket `giangdc-sop-demo`,
   Worker `giangdc-sop-demo-api`, Pages project `giangdc-sop-demo`.
   OPEN-CF-01 chốt (dùng account của user, tài nguyên demo tách production).
+- T1.2: domain auth (27 permission, 7 role, SOD, scope, PBKDF2 — 19 test);
+  D1 migration 0001 + seed demo; API login/logout/me/check-scope;
+  Web login + trang chủ theo vai trò. OPEN-SOD-01/DATA-01/SCOPE-01 chốt.
