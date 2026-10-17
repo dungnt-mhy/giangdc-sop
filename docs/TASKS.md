@@ -68,9 +68,11 @@ T2.4 web (danh sách, soạn thảo 12 trường, thẩm định/phê duyệt/ph
 Dữ liệu test đã dọn, demo chỉ giữ SAMPLE-SHIPPING. Ghi chú: `process.publish`/`deprecate`
 hiện chỉ admin (mapping DEFAULT, chốt G2); job tự kích hoạt SCHEDULED ngoài MVP.
 
-## T3 — Execution engine + step lifecycle
+## T3 — Execution engine + step lifecycle ✅ HOÀN THÀNH 18/10/2026 (D-12)
 
 EXE-001..013, BR-008/009/014. AC-03, AC-04, AC-07, AC-09, AC-16, AC-18.
+Phạm vi D-12: tạo lượt + gán người theo chức vụ, chạy bước, chụp ảnh (R2),
+PHOTO bắt buộc (PRC-006), phân quyền assignee-only + scope. Xem HANDOFF.md.
 
 ## T4 — Evidence & upload
 
