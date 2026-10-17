@@ -91,8 +91,26 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
 
 ## Tiếp theo
 
-- **T2 — Process Catalog + Authoring & Governance** (PRC-001..011, GOV-001..009).
-  AC-01, AC-02, AC-12.
+- **T3 — Execution engine + step lifecycle** (EXE-001..013, BR-008/009/014).
+  AC-03, AC-04, AC-07, AC-09, AC-16, AC-18. Kế hoạch chờ duyệt.
+
+## T2 hoàn thành (17/10/2026 chiều)
+
+- **T2.1 Domain** (`packages/domain/src/process.ts`): máy trạng thái phiên bản 7 trạng thái
+  (SRS §7.1/§7.5), khóa sửa từ IN_REVIEW, resolveActivation (1 ACTIVE + 1 SCHEDULED,
+  supersede nguyên tử, retry idempotent), validateVersionForSubmit (PRC-009 + BR-003),
+  checkVersionApproval (GOV-004 + OPEN-SOD-01 + D-08). Test fail-first: 33 test mới,
+  tổng 52/52 đạt.
+- **T2.2 Migration 0002**: 6 bảng + partial unique index cưỡng chế 1 ACTIVE/1 SCHEDULED (AC-02);
+  seed SAMPLE-SHIPPING 11 bước "Xuất hàng đến đại lý" (Shipping.pdf), v1 ACTIVE.
+- **T2.3 API** (21 endpoint, `apps/api/src/processes.ts`): CRUD/tìm kiếm, tạo version bằng copy,
+  step CRUD + reorder, cấu hình completion/skip/failure, validate, submit→comment→return→
+  approve→release→activate→retire; Idempotency-Key bắt buộc 6 mutation (replay/CONFLICT);
+  optimistic concurrency; OpenAPI `docs/openapi-t2.yaml`.
+  Smoke test live đạt toàn bộ (4-mắt, D-08, supersede nguyên tử, schedule kép bị từ chối).
+- **T2.4 Web** (`apps/web/src/processes.tsx`): nav "Danh mục Quy trình" live; danh sách,
+  timeline phiên bản, trình soạn (12 trường/PRC-005), thẩm định/phê duyệt/phát hành.
+  Deploy Pages production xong. AC-12 chờ kiểm tra trình duyệt.
 
 ## Rủi ro / chờ quyết định
 
