@@ -1,7 +1,8 @@
 import React from 'react';
 import { ProcessesView } from './processes.js';
+import { ExecutionsView } from './executions.js';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
+export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.webp`;
 
 interface AppRole {
@@ -244,7 +245,7 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
 const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string }[] = [
   { key: 'overview', label: 'Tổng quan', ico: '◉', live: true },
   { key: 'processes', label: 'Danh mục Quy trình', ico: '◈', live: true },
-  { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: false, tag: 'T3' },
+  { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: true },
   { key: 'evidence', label: 'Bằng chứng', ico: '▣', live: false, tag: 'T4' },
   { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: false, tag: 'T5' },
   { key: 'report', label: 'Báo cáo', ico: '▤', live: false, tag: 'T6' },
@@ -372,6 +373,8 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
       <main className="main">
         {nav === 'processes' ? (
           <ProcessesView perms={me.permissions} />
+        ) : nav === 'execution' ? (
+          <ExecutionsView perms={me.permissions} userId={me.user.id} />
         ) : (
           <>
         <header className="topbar">
