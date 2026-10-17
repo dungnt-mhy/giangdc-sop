@@ -64,6 +64,15 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
     dashboard Tổng quan (3 thẻ Vai trò/Đơn vị/Số quyền, 11 nhóm quyền, bảng phân hệ
     T2–T6), responsive mobile.
   - Base path qua `VITE_BASE_PATH` (github.io: /giangdc-sop/, Cloudflare: /).
+- **UI pro + remember me (17/10 chiều, theo yêu cầu user):**
+  - Logo chữ S từ node quy trình (tự gen bằng media pipeline, `apps/web/public/logo.webp`),
+    gắn ở trang đăng nhập, sidebar, màn hình loading và favicon.
+  - Font Be Vietnam Pro; form login thêm checkbox "Ghi nhớ đăng nhập (30 ngày)"
+    (mặc định tích) + nút Hiện/Ẩn mật khẩu.
+  - API `POST /auth/login` nhận `rememberMe` → session 30 ngày (không tích: 8 giờ).
+  - Dashboard thành app-shell sidebar: menu phân hệ (5 mục T2–T6 disabled "sắp ra mắt"),
+    thẻ người dùng + đăng xuất.
+  - Test trình duyệt 6/6 bước đạt trên production (reload giữ đăng nhập, logout sạch).
 
 ## Quyết định đã chốt (G1)
 
