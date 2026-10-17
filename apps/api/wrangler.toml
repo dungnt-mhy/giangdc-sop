@@ -13,5 +13,5 @@ binding = "EVIDENCE"
 bucket_name = "giangdc-sop-demo"
 
 [vars]
-# Origin của web demo được phép gọi API kèm cookie.
-CORS_ORIGIN = "https://giangdc-sop-demo.pages.dev,https://dungnt-mhy.github.io"
+# Origin của web được phép gọi API kèm cookie.
+CORS_ORIGIN = "https://giangdc-sop-app.pages.dev,https://dungnt-mhy.github.io"
