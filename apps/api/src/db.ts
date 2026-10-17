@@ -1,6 +1,8 @@
 /** Kiểu binding của Worker (khớp wrangler.toml). */
 export interface Env {
   DB: D1Database;
+  /** Bucket R2 lưu bằng chứng (T3/T4). */
+  EVIDENCE: R2Bucket;
   CORS_ORIGIN?: string;
 }
 
