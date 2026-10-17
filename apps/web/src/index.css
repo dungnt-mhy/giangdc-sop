@@ -33,6 +33,7 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 img.logo-img {
@@ -144,12 +145,31 @@ img.logo-img {
 
 .login-form-wrap {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3rem 2rem;
+  flex-direction: column;
+  padding: 0;
   background:
     radial-gradient(600px 300px at 50% 0%, rgba(47, 107, 255, 0.07), transparent 70%),
     var(--bg);
+}
+
+.login-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  width: 100%;
+}
+
+.site-footer {
+  width: 100%;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.75;
+  padding: 1.1rem 1.5rem 1.4rem;
+  border-top: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .login-card {
@@ -522,8 +542,65 @@ img.logo-img {
 
 .page-sub {
   color: var(--muted);
-  margin: 0 0 1.8rem;
+  margin: 0;
   font-size: 0.93rem;
+}
+
+/* Header đầu trang nội dung (dashboard) */
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.8rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.crumb {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+.crumb strong {
+  color: var(--navy-700);
+  font-weight: 700;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex: none;
+  padding-top: 0.2rem;
+}
+
+.today {
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.env-badge {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  padding: 0.32rem 0.8rem;
+  border-radius: 999px;
+}
+
+.app-footer {
+  margin-top: 2.5rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.75;
 }
 
 .stat-grid {
@@ -758,14 +835,26 @@ img.logo-img {
   .sidebar {
     position: static;
     height: auto;
-    flex-direction: column;
-    padding: 1rem;
+    padding: 0.9rem 0.8rem;
+  }
+
+  .sidebar .brand-mark {
+    margin-bottom: 0.7rem;
+    padding: 0 0.3rem;
+  }
+
+  .sidebar .brand-mark .logo-img {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
   }
 
   .sidebar nav {
     display: flex;
     overflow-x: auto;
     gap: 0.3rem;
+    padding-bottom: 0.2rem;
+    -webkit-overflow-scrolling: touch;
   }
 
   .nav-label {
@@ -774,6 +863,13 @@ img.logo-img {
 
   .nav-item {
     white-space: nowrap;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.86rem;
+  }
+
+  .nav-item .ico {
+    width: 26px;
+    height: 26px;
   }
 
   .nav-item .soon-tag {
@@ -782,12 +878,34 @@ img.logo-img {
 
   .sidebar-foot {
     border-top: none;
-    margin-top: 0.8rem;
-    padding-top: 0;
+    margin-top: 0.7rem;
+    padding: 0 0.3rem;
+  }
+
+  .user-chip .uname {
+    max-width: 40vw;
+  }
+
+  .btn-ghost-light {
+    margin-top: 0.6rem;
+    padding: 0.6rem;
   }
 
   .main {
     padding: 1.5rem 1rem 3rem;
+  }
+
+  .topbar {
+    flex-direction: column;
+    gap: 0.7rem;
+  }
+
+  .today {
+    display: none;
+  }
+
+  .login-main {
+    padding: 2.2rem 1.2rem;
   }
 }
 
@@ -797,13 +915,21 @@ img.logo-img {
   }
 
   .login-brand {
-    padding: 2.6rem 1.8rem;
+    padding: 2rem 1.5rem 1.8rem;
   }
 
+  .brand-mark {
+    margin-bottom: 1.1rem;
+  }
+
+  /* Mobile: gọn để tới form nhanh — giữ logo + tiêu đề, ẩn đoạn văn dài */
   .login-brand h1 {
-    font-size: 1.55rem;
+    font-size: 1.3rem;
+    margin-bottom: 0;
   }
 
+  .login-brand p.lead,
+  .login-brand .brand-points,
   .brand-foot {
     display: none;
   }
@@ -811,5 +937,13 @@ img.logo-img {
   .stat-grid,
   .module-grid {
     grid-template-columns: 1fr;
+  }
+
+  .login-card {
+    padding: 2rem 1.5rem 1.8rem;
+  }
+
+  .demo-accounts {
+    overflow-x: auto;
   }
 }
