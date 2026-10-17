@@ -13,6 +13,7 @@
 | OPEN-SOD-01 bổ sung | **Ánh xạ mức nghiêm trọng → cấp phê duyệt:** LOW/MEDIUM → 1 người trong 3 role (trong scope); HIGH → 1 người cấp quản lý trở lên; BLOCKING → quản lý hoặc admin + bắt buộc ghi lý do, tự duyệt ở mức này bị gắn cờ đỏ trong audit. | 17/10/2026 | Đề xuất, user duyệt |
 | OPEN-DATA-01 | **9 trường chung của Lượt thực hiện:** mã lượt (duy nhất), quy trình + phiên bản nguồn, trạng thái, người tạo, thời gian tạo, đơn vị/kho, người được giao hiện tại, hạn hoàn thành, ghi chú. Dữ liệu riêng theo quy trình đi qua mẫu biểu đã version hóa, không nhét vào trường chung. | 17/10/2026 | Đề xuất, user duyệt |
 | OPEN-SCOPE-01 | **Cây 2 cấp:** 1 org root → các đơn vị/kho (thuộc tính loại OFFICE/WAREHOUSE, không tách entity kho riêng). Mỗi lượt thuộc đúng 1 đơn vị; quyền giới hạn theo đơn vị được gán; admin cross-scope được nhưng mọi truy cập đều audit. Prototype: 1 org + 2 đơn vị mẫu. | 17/10/2026 | Đề xuất, user duyệt |
+| D-08 (T2) | **Kế hoạch T2 được duyệt 17/10/2026:** phạm vi PRC-001..009 + GOV-001..007 (MUST) + BR-002/003/004; 4 mục SHOULD (PRC-010, PRC-011, GOV-008, GOV-009) dời sang task sau. **Ánh xạ severity → cấp phê duyệt** (OPEN-SOD-01) áp dụng cho cả phê duyệt phiên bản quy trình (GOV-004), đồng nhất với phê duyệt ngoại lệ. | 17/10/2026 | Đề xuất, user duyệt |
 
 ## Quyết định sản phẩm (từ Cẩm nang AI Agent v1.1, đồng bộ SRS v1.6)
 
