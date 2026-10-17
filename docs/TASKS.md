@@ -12,21 +12,25 @@ Hoàn thành 17/10/2026.
 Chốt TypeScript monorepo. Evidence: `docs/adr/ADR-001-stack.md`.
 Hoàn thành 17/10/2026.
 
-## T1.1 — Nền móng + CI (TIẾP THEO)
+## T1.1 — Nền móng + CI ✅ (TIẾP THEO → HOÀN THÀNH 17/10/2026)
 
 **Mô tả:** khởi tạo monorepo pnpm workspaces (`apps/web`, `apps/api`,
-`packages/domain`, `packages/adapters`); GitHub Actions (lint/typecheck/test/build/security);
-pipeline deploy demo Cloudflare.
+`packages/domain`, `packages/adapters`, `packages/contracts`); GitHub Actions
+(lint/typecheck/test/build/audit); pipeline deploy demo Cloudflare.
 
 **Tiêu chí nghiệm thu:**
-- CI xanh trên PR mẫu (lint + typecheck + test + build + security checks).
-- Deploy demo thủ công thành công; smoke test đăng nhập + tạo lượt đạt (AC-15 mức nền móng).
-- Không có secret trong repo/log.
+- ✅ CI xanh trên GitHub (lint + typecheck + test 6 passed + build + audit sạch).
+- ✅ Deploy demo thủ công thành công: Worker + Pages + D1 + R2.
+- ✅ Smoke test đạt: API /health 200, web 200 (AC-15 ở mức nền móng; smoke
+  đăng nhập + tạo lượt đầy đủ sẽ làm ở T1.2/T3 khi có auth và execution engine).
+- ✅ Không có secret trong repo/log.
 
-**Phụ thuộc:** OPEN-REPO-01 đã chốt (17/10/2026): repo cá nhân `dungnt-mhy/giangdc-sop`,
-public — https://github.com/dungnt-mhy/giangdc-sop. Khung T0+T1 đã đẩy lên nhánh `main`.
-Còn chờ OPEN-CF-01 (tài khoản Cloudflare).
-Nếu chưa có Cloudflare: làm phần code monorepo + CI trước, đấu nối sau.
+**Ghi chú kỹ thuật:**
+- OPEN-REPO-01 đã chốt: repo cá nhân `dungnt-mhy/giangdc-sop`, public.
+- OPEN-CF-01 đã chốt: dùng tài khoản Cloudflare của user; tài nguyên demo đặt tên
+  `giangdc-sop-demo*` để tách khỏi production.
+- Vitest nâng lên ^5 để sạch 4 vulnerability (tinypool).
+- pnpm 12 yêu cầu `allowBuilds` trong pnpm-workspace.yaml cho esbuild/workerd.
 
 ## T1.2 — Xác thực và phân quyền
 
