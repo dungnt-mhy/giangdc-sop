@@ -1339,6 +1339,71 @@ img.logo-img {
   gap: 0 0.8rem;
 }
 
+/* Form trong modal: nhãn trên, ô nhập dưới — dùng cho mọi modal */
+.modal .field {
+  margin: 0 0 0.85rem;
+}
+
+.modal .field > label,
+.modal > label:not(.check) {
+  display: block;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.35rem;
+}
+
+.modal .input,
+.modal select.input,
+.modal textarea.input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.62rem 0.75rem;
+  font-size: 0.93rem;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid #d3dae4;
+  border-radius: 10px;
+}
+
+.modal .input:focus,
+.modal select.input:focus,
+.modal textarea.input:focus {
+  outline: none;
+  border-color: var(--blue-500);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.modal textarea.input {
+  resize: vertical;
+  min-height: 64px;
+}
+
+.modal .form-grid {
+  margin-bottom: 0.85rem;
+}
+
+.modal .form-grid .field {
+  margin-bottom: 0;
+}
+
+.modal select[multiple].input {
+  min-height: 118px;
+}
+
+.inline-add select.input.kind {
+  flex: none;
+  width: auto;
+}
+
+.sec-desc {
+  font-size: 0.84rem;
+  color: var(--muted);
+  margin: -0.2rem 0 0.6rem;
+}
+
 .check {
   display: flex;
   align-items: center;
