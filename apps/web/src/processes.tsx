@@ -10,6 +10,7 @@ import type {
   ReviewCommentDto,
   ApprovalRecordDto,
   UpsertStepBody,
+  PositionDto,
   ValidationIssueDto,
 } from '@giangdc-sop/contracts';
 import { api } from './App.js';
@@ -79,26 +80,19 @@ function fmtDate(iso: string | null): string {
 }
 
 /**
- * Tùy chọn vai trò cho multi-select: 7 vai trò hệ thống + giữ giá trị lạ đã lưu
- * (không mất dữ liệu cũ nhập tay trước đây).
+ * Multi-select chức vụ dùng chung (thực hiện / giám sát) — D-09.
+ * Danh mục lấy từ GET /positions (bảng positions).
  */
-function roleOptionsFor(selected: readonly string[]): [string, string][] {
-  const opts: [string, string][] = Object.entries(ROLE_LABEL);
-  for (const r of selected) {
-    if (!ROLE_LABEL[r] && !opts.some(([k]) => k === r)) opts.push([r, r]);
-  }
-  return opts;
-}
-
-/** Multi-select vai trò dùng chung (thực hiện / giám sát / được bỏ qua). */
-function RoleMultiSelect({
+function PositionMultiSelect({
   label,
   hint,
+  positions,
   value,
   onChange,
 }: {
   label: string;
   hint: string;
+  positions: PositionDto[];
   value: string[];
   onChange: (v: string[]) => void;
 }) {
@@ -111,8 +105,8 @@ function RoleMultiSelect({
         value={value}
         onChange={(e) => onChange(Array.from(e.target.selectedOptions, (o) => o.value))}
       >
-        {roleOptionsFor(value).map(([k, v]) => (
-          <option key={k} value={k}>{v}</option>
+        {positions.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}</option>
         ))}
       </select>
       <p className="sec-desc">{hint}</p>
@@ -120,8 +114,14 @@ function RoleMultiSelect({
   );
 }
 
-/** Nhãn tiếng Việt cho mảng vai trò, cách nhau bởi dấu phẩy. */
-function roleNames(arr: readonly string[] | undefined): string {
+/** Nhãn tiếng Việt cho mảng chức vụ, cách nhau bởi dấu phẩy. */
+function positionNames(arr: readonly PositionDto[] | undefined): string {
+  if (!arr || arr.length === 0) return '—';
+  return arr.map((p) => p.name).join(', ');
+}
+
+/** Nhãn tiếng Việt cho mảng vai trò hệ thống (dùng cho skip.allowedRoles — chưa đổi theo D-09). */
+function skipRoleNames(arr: readonly string[] | undefined): string {
   if (!arr || arr.length === 0) return '—';
   return arr.map((r) => ROLE_LABEL[r] ?? r).join(', ');
 }
@@ -134,8 +134,8 @@ function StepDetail({ step: s }: { step: ProcessStepDto }) {
   return (
     <div className="step-detail">
       <div className="sd-grid">
-        {kv('Vai trò thực hiện', roleNames(s.roles))}
-        {kv('Vai trò giám sát', roleNames(s.supervisorRoles))}
+        {kv('Chức vụ thực hiện', positionNames(s.performerPositions))}
+        {kv('Chức vụ giám sát', positionNames(s.supervisorPositions))}
       </div>
       {s.prerequisites && kv('Điều kiện tiên quyết', s.prerequisites)}
       {s.inputs && kv('Đầu vào', s.inputs)}
@@ -149,7 +149,7 @@ function StepDetail({ step: s }: { step: ProcessStepDto }) {
         <span>{s.completion.map((c, i) => (
           <span className="perm-tag" key={i}>[{COMP_KIND_LABEL[c.kind] ?? c.kind}] {c.label}</span>
         ))}</span>)}
-      {kv('Cho phép bỏ qua', s.skip.allowed ? `Có — vai trò: ${roleNames(s.skip.allowedRoles)}` : 'Không')}
+      {kv('Cho phép bỏ qua', s.skip.allowed ? `Có — vai trò: ${skipRoleNames(s.skip.allowedRoles)}` : 'Không')}
       {kv('Xử lý khi không đạt', FAILURE_LABEL[s.failurePolicy] ?? s.failurePolicy)}
     </div>
   );
@@ -516,8 +516,8 @@ function ProcessDetail({
 const EMPTY_STEP: UpsertStepBody = {
   code: '',
   title: '',
-  roles: [],
-  supervisorRoles: [],
+  performerPositionIds: [],
+  supervisorPositionIds: [],
   required: true,
   failurePolicy: 'STOP',
   completion: [],
@@ -526,11 +526,13 @@ const EMPTY_STEP: UpsertStepBody = {
 
 function StepForm({
   initial,
+  positions,
   onSave,
   onCancel,
   busy,
 }: {
   initial: UpsertStepBody;
+  positions: PositionDto[];
   onSave: (b: UpsertStepBody) => Promise<void>;
   onCancel: () => void;
   busy: boolean;
@@ -579,17 +581,19 @@ function StepForm({
           <label>Mã bước *</label>
           <input className="input" value={f.code} onChange={(e) => { set('code', e.target.value); setFerr(''); }} placeholder="B01" />
         </div>
-        <RoleMultiSelect
-          label="Vai trò thực hiện"
-          hint="Chạm để chọn/bỏ chọn từng vai trò (giữ Ctrl trên máy tính để chọn nhiều)."
-          value={f.roles ?? []}
-          onChange={(v) => set('roles', v)}
+        <PositionMultiSelect
+          label="Chức vụ thực hiện"
+          hint="Chạm để chọn/bỏ chọn từng chức vụ (giữ Ctrl trên máy tính để chọn nhiều)."
+          positions={positions}
+          value={f.performerPositionIds ?? []}
+          onChange={(v) => set('performerPositionIds', v)}
         />
-        <RoleMultiSelect
-          label="Vai trò giám sát"
-          hint="Vai trò giám sát việc thực hiện bước này. Chạm để chọn/bỏ chọn từng vai trò."
-          value={f.supervisorRoles ?? []}
-          onChange={(v) => set('supervisorRoles', v)}
+        <PositionMultiSelect
+          label="Chức vụ giám sát"
+          hint="Chức vụ giám sát việc thực hiện bước này. Chạm để chọn/bỏ chọn từng chức vụ."
+          positions={positions}
+          value={f.supervisorPositionIds ?? []}
+          onChange={(v) => set('supervisorPositionIds', v)}
         />
         <div className="field">
           <label>Tiêu đề hành động *</label>
@@ -694,6 +698,7 @@ function VersionEditor({
 }) {
   const [v, setV] = React.useState(version);
   const [steps, setSteps] = React.useState<ProcessStepDto[]>([]);
+  const [positions, setPositions] = React.useState<PositionDto[]>([]);
   const [editing, setEditing] = React.useState<UpsertStepBody | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
   const [openSteps, setOpenSteps] = React.useState<Set<string>>(new Set());
@@ -716,6 +721,13 @@ function VersionEditor({
   }, [v.id]);
 
   React.useEffect(() => { load(); }, [load]);
+
+  // Danh mục chức vụ (D-09) cho form bước.
+  React.useEffect(() => {
+    api('/positions')
+      .then((d) => setPositions((d as { items: PositionDto[] }).items ?? []))
+      .catch(() => setPositions([]));
+  }, []);
 
   async function saveStep(body: UpsertStepBody) {
     setBusy(true);
@@ -853,7 +865,9 @@ function VersionEditor({
                     setEditing({
                       code: s.code, title: s.title, prerequisites: s.prerequisites, inputs: s.inputs,
                       instructions: s.instructions, expectedResult: s.expectedResult, outputs: s.outputs,
-                      notes: s.notes, roles: s.roles ?? [], supervisorRoles: s.supervisorRoles ?? [],
+                      notes: s.notes,
+                      performerPositionIds: (s.performerPositions ?? []).map((p) => p.id),
+                      supervisorPositionIds: (s.supervisorPositions ?? []).map((p) => p.id),
                       required: s.required, targetDurationMin: s.targetDurationMin,
                       warnings: s.warnings, completion: s.completion, skip: s.skip, failurePolicy: s.failurePolicy,
                     });
@@ -869,7 +883,7 @@ function VersionEditor({
       </section>
 
       {editing && (
-        <StepForm initial={editing} busy={busy} onCancel={() => { setEditing(null); setEditId(null); }} onSave={saveStep} />
+        <StepForm initial={editing} positions={positions} busy={busy} onCancel={() => { setEditing(null); setEditId(null); }} onSave={saveStep} />
       )}
 
       {showSubmit && (
