@@ -25,6 +25,7 @@ interface ProcessRow {
   status: string;
   created_at: string;
   updated_at: string;
+  created_by_name: string | null;
 }
 
 interface VersionRow {
@@ -54,6 +55,8 @@ interface StepRow {
   outputs: string | null;
   notes: string | null;
   role: string | null;
+  roles_json: string;
+  supervisor_roles_json: string;
   required: number;
   target_duration_min: number | null;
   warnings: string | null;
@@ -88,6 +91,7 @@ export function toProcessDto(r: ProcessRow): ProcessDto {
     status: r.status as 'ACTIVE' | 'ARCHIVED',
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    createdByName: r.created_by_name,
   };
 }
 
@@ -108,7 +112,20 @@ export function toVersionDto(r: VersionRow): ProcessVersionDto {
   };
 }
 
+/** Chuẩn hóa mảng vai trò: trim, loại rỗng, dedupe, tối đa 20. */
+function normalizeRoles(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const r of v) {
+    if (typeof r !== 'string') continue;
+    const t = r.trim();
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out.slice(0, 20);
+}
+
 export function toStepDto(r: StepRow): ProcessStepDto {
+  const roles = normalizeRoles(safeJsonParse<unknown>(r.roles_json, []));
   return {
     id: r.id,
     versionId: r.version_id,
@@ -120,7 +137,10 @@ export function toStepDto(r: StepRow): ProcessStepDto {
     expectedResult: r.expected_result,
     outputs: r.outputs,
     notes: r.notes,
-    role: r.role,
+    /** @deprecated = roles[0] ?? cột role cũ ?? null (tương thích đọc). */
+    role: roles[0] ?? r.role ?? null,
+    roles,
+    supervisorRoles: normalizeRoles(safeJsonParse<unknown>(r.supervisor_roles_json, [])),
     required: r.required === 1,
     targetDurationMin: r.target_duration_min,
     warnings: r.warnings,
@@ -147,41 +167,45 @@ export async function listProcesses(
   const conds: string[] = [];
   const binds: unknown[] = [];
   if (filter.q) {
-    conds.push('(code LIKE ? OR name LIKE ?)');
+    conds.push('(p.code LIKE ? OR p.name LIKE ?)');
     binds.push(`%${filter.q}%`, `%${filter.q}%`);
   }
   if (filter.group) {
-    conds.push('process_group = ?');
+    conds.push('p.process_group = ?');
     binds.push(filter.group);
   }
   if (filter.status) {
-    conds.push('status = ?');
+    conds.push('p.status = ?');
     binds.push(filter.status);
   }
   if (filter.orgUnitId) {
-    conds.push('org_unit_id = ?');
+    conds.push('p.org_unit_id = ?');
     binds.push(filter.orgUnitId);
   }
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
+  const from = 'FROM processes p LEFT JOIN users u ON u.id = p.created_by';
   const totalRow = await db
-    .prepare(`SELECT COUNT(*) AS c FROM processes ${where}`)
+    .prepare(`SELECT COUNT(*) AS c ${from} ${where}`)
     .bind(...binds)
     .first<{ c: number }>();
   const rows = await db
-    .prepare(`SELECT * FROM processes ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT p.*, u.display_name AS created_by_name ${from} ${where} ORDER BY p.updated_at DESC LIMIT ? OFFSET ?`)
     .bind(...binds, limit, offset)
     .all<ProcessRow>();
   return { items: (rows.results ?? []).map(toProcessDto), total: totalRow?.c ?? 0 };
 }
 
 export async function findProcess(db: D1Database, id: string): Promise<ProcessDto | null> {
-  const row = await db.prepare('SELECT * FROM processes WHERE id = ?1').bind(id).first<ProcessRow>();
+  const row = await db
+    .prepare('SELECT p.*, u.display_name AS created_by_name FROM processes p LEFT JOIN users u ON u.id = p.created_by WHERE p.id = ?1')
+    .bind(id)
+    .first<ProcessRow>();
   return row ? toProcessDto(row) : null;
 }
 
 export async function findProcessByCode(db: D1Database, code: string): Promise<ProcessDto | null> {
   const row = await db
-    .prepare('SELECT * FROM processes WHERE code = ?1')
+    .prepare('SELECT p.*, u.display_name AS created_by_name FROM processes p LEFT JOIN users u ON u.id = p.created_by WHERE p.code = ?1')
     .bind(code)
     .first<ProcessRow>();
   return row ? toProcessDto(row) : null;
@@ -264,6 +288,10 @@ export async function updateVersionState(
 }
 
 export function stepBodyToColumns(body: UpsertStepBody): Record<string, unknown> {
+  // Tương thích ghi: `role` cũ map vào `roles` khi `roles` không có.
+  const roles = normalizeRoles(
+    body.roles && body.roles.length > 0 ? body.roles : body.role ? [body.role] : [],
+  );
   return {
     code: body.code.trim(),
     title: body.title.trim(),
@@ -273,7 +301,9 @@ export function stepBodyToColumns(body: UpsertStepBody): Record<string, unknown>
     expected_result: body.expectedResult ?? null,
     outputs: body.outputs ?? null,
     notes: body.notes ?? null,
-    role: body.role ?? null,
+    role: roles[0] ?? body.role ?? null,
+    roles_json: JSON.stringify(roles),
+    supervisor_roles_json: JSON.stringify(normalizeRoles(body.supervisorRoles)),
     required: body.required === false ? 0 : 1,
     target_duration_min: body.targetDurationMin ?? null,
     warnings: body.warnings ?? null,
