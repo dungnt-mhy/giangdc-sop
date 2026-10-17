@@ -1,0 +1,15 @@
+# packages
+node_modules/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# build
+dist/
+build/
+.wrangler/
+
+# OS
+.DS_Store
