@@ -15,3 +15,12 @@
 - T1.2: domain auth (27 permission, 7 role, SOD, scope, PBKDF2 — 19 test);
   D1 migration 0001 + seed demo; API login/logout/me/check-scope;
   Web login + trang chủ theo vai trò. OPEN-SOD-01/DATA-01/SCOPE-01 chốt.
+
+## 17/10/2026 — T2 Process Catalog + Authoring & Governance hoàn thành
+
+- Domain: máy trạng thái phiên bản 7 trạng thái, khóa sửa, activation, validate, phê duyệt D-08 (52/52 test).
+- Migration 0002 (6 bảng + partial unique index) + seed SAMPLE-SHIPPING 11 bước.
+- API 21 endpoint + idempotency 6 mutation + OpenAPI `docs/openapi-t2.yaml`; smoke test live đạt.
+- Web: phân hệ Danh mục Quy trình (danh sách, soạn thảo, thẩm định/phê duyệt/phát hành).
+- D-08 (T2): phạm vi MUST (PRC-001..009, GOV-001..007); 4 SHOULD dời task sau;
+  severity mapping áp dụng cho phê duyệt phiên bản.
