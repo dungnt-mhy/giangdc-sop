@@ -73,7 +73,7 @@ interface IdemContext {
   json(body: any, status?: number): Response;
 }
 
-async function withIdempotency(
+export async function withIdempotency(
   c: IdemContext,
   operation: string,
   body: unknown,
