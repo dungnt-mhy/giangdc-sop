@@ -73,6 +73,12 @@ Cập nhật: 17/10/2026 (T1.2 hoàn thành).
   - Dashboard thành app-shell sidebar: menu phân hệ (5 mục T2–T6 disabled "sắp ra mắt"),
     thẻ người dùng + đăng xuất.
   - Test trình duyệt 6/6 bước đạt trên production (reload giữ đăng nhập, logout sạch).
+- **Header/footer + mobile (17/10 chiều, theo góp ý user):**
+  - Trang login có footer `.site-footer` (© 2026 SOP Platform · bản demo T1.2);
+    dùng flex column nên trên mobile footer luôn nằm ngay dưới form, hết cụt ngủn.
+  - Dashboard có header `.topbar` (breadcrumb Trang chủ/Tổng quan, tiêu đề, ngày
+    tiếng Việt tự động, badge DEMO) + footer `.app-footer`.
+  - Test desktop đạt; mobile kiểm tra qua CSS build.
 
 ## Quyết định đã chốt (G1)
 
