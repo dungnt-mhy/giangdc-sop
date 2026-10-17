@@ -1,5 +1,19 @@
 # CHANGELOG.md — Lịch sử thay đổi dự án
 
+## 17/10/2026 — D-09: mô hình Chức vụ thay vai trò hệ thống ở bước
+
+- Phân biệt Vai trò hệ thống (7 role, chỉ phân quyền) với Chức vụ (thủ kho, thủ quỹ...):
+  bước dùng `Chức vụ thực hiện[]` + `Chức vụ giám sát[]` (id tham chiếu bảng `positions`).
+- Contract: `PositionDto`, `CreatePositionBody`; xóa sạch `role`/`roles`/`supervisorRoles` ở bước.
+- Migration 0004: bảng `positions` + `user_positions`; rebuild `process_steps` (dọn cột 0003);
+  seed 5 chức vụ + gán user demo; đã apply D1 demo.
+- API: GET/POST `/positions` (POST chỉ admin/manager); step validate id chức vụ tồn tại
+  (400 UNKNOWN_POSITION); OpenAPI cập nhật.
+- Web: form bước dùng 2 multi-select chức vụ (load từ API); chi tiết bước hiện tên chức vụ.
+- 56/56 test đạt; lint + typecheck sạch; smoke test API đạt; deploy demo + push GitHub.
+- Follow-up: `skip.allowedRoles` chưa đổi sang chức vụ (chờ ý kiến); UI checkbox vai trò +
+  chức vụ ở Quản trị người dùng thuộc T7.
+
 ## 17/10/2026 — T2 mở rộng: vai trò nhiều chọn + UX form/danh sách bước
 
 - Vai trò thực hiện + giám sát của bước chuyển sang nhiều chọn (`roles[]`, `supervisorRoles[]`);
