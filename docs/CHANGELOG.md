@@ -1,5 +1,21 @@
 # CHANGELOG.md — Lịch sử thay đổi dự án
 
+## 18/10/2026 — T3: Lượt thực hiện + Chụp ảnh bằng chứng (D-12)
+
+- Tạo lượt từ bản ACTIVE: snapshot 11 bước, sinh mã TH-YYYYMMDD-XXXX, gán người
+  thực hiện/giám sát theo chức vụ (D-09) — sai chức vụ → 400 ASSIGNEE_POSITION_MISMATCH.
+- Chạy bước: PENDING→IN_PROGRESS→DONE; bước đầu start thì lượt CREATED→IN_PROGRESS.
+- Nút "Chụp ảnh": `<input capture="environment">` mở camera trên mobile; upload
+  multipart lên R2 `giangdc-sop-demo` (key evidence/...), validate MIME ảnh + 10MB.
+- PRC-006: bước cấu hình PHOTO bắt buộc → chưa có ảnh không cho hoàn thành (400 PHOTO_REQUIRED).
+- Phân quyền: execution.create/view/operate; chỉ người được gán thao tác bước (403 + audit);
+  scope theo đơn vị, scope.manage cross-scope có audit.
+- 10 endpoint mới; OpenAPI `docs/openapi-t3.yaml`; migration 0007 đã apply D1 demo.
+- Web: menu "Lượt Thực hiện" (mở khóa), danh sách Của tôi/Tất cả, chi tiết + tiến độ,
+  form tạo lượt, chụp ảnh + preview + hoàn thành bước (mobile-first).
+- 65/65 test đạt; lint + typecheck sạch; deploy Worker + Pages; push GitHub.
+- Lượt demo: TH-20261017-B4NE.
+
 ## 17/10/2026 — D-10: vai trò ứng dụng mở rộng (thay 7 vai trò cứng)
 
 - Mô hình mới: bảng `roles` (thêm tùy ý: Quản trị viên, Quản lý, Người phê duyệt, Người thực hiện)
