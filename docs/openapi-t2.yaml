@@ -77,7 +77,7 @@ components:
           type: object
           properties:
             allowed: { type: boolean }
-            allowedRoles: { type: array, items: { type: string } }
+            allowedPositions: { type: array, items: { type: string }, description: 'id chức vụ được bỏ qua (bảng positions)' }
             reasonRequired: { type: boolean }
             approvalLevel: { type: string, nullable: true, enum: [LOW, MEDIUM, HIGH, BLOCKING] }
         failurePolicy: { type: string, enum: [STOP, RETRY, ESCALATE, CANCEL] }
