@@ -424,3 +424,13 @@ Cập nhật: 18/10/2026 (D-19 hoàn thành code, chờ deploy + kiểm thử tr
 - Kiểm tra: chỉ có 1 chỗ render action versions (`.ver-row` card) — không có bảng desktop thứ 2. Nút không hiện ở ảnh user là do build cũ/cache (D-20 đã kiểm thử 8/8 thấy đủ nút).
 - `pnpm --filter giangdc-sop-web build` pass; `tsc --noEmit` 0 lỗi.
 - Chưa deploy/commit/push (parent làm).
+
+## D-20d — Lịch sử phiên bản mobile dạng bảng ngang (18/10/2026 tối)
+- **User yêu cầu trực tiếp** ("sửa luôn"): bỏ layout thẻ dọc ở mobile, giữ dạng bảng cuộn ngang.
+- `apps/web/src/processes.tsx`: thêm `div.ver-head` (aria-hidden) với 3 nhãn "Phiên bản / Thông tin / Thao tác" — chỉ hiện ở mobile.
+- `apps/web/src/index.css`:
+  - Base: `.ver-head { display: none; }` (desktop không đổi).
+  - `@media (max-width: 860px)`: xóa `.ver-row { flex-direction: column; }`; `.ver-timeline` thêm `overflow-x: auto` + `padding-bottom`; `.ver-head` hiện dạng flex, `min-width: 640px`; `.ver-timeline .ver-row` giữ `flex-direction: row`, `align-items: center`, `min-width: 640px`.
+- Không đổi: desktop layout, logic nút, API/domain.
+- `pnpm --filter giangdc-sop-web build` pass; `tsc --noEmit` 0 lỗi.
+- Chưa deploy/commit/push/browser-test (parent làm).
