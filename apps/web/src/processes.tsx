@@ -474,7 +474,7 @@ function ProcessDetail({
                 <VersionBadge state={v.state} />
                 <div className="ver-sum">{v.changeSummary || <span className="muted">Chưa có mô tả thay đổi</span>}</div>
                 <div className="ver-meta">
-                  Tạo {new Date(v.createdAt).toLocaleString('vi-VN')}
+                  Tạo bởi {v.createdByName ?? '—'} · {new Date(v.createdAt).toLocaleString('vi-VN')}
                   {v.effectiveFrom ? ` · Hiệu lực từ ${new Date(v.effectiveFrom).toLocaleString('vi-VN')}` : ''}
                 </div>
               </div>
