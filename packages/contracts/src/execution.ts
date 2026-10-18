@@ -27,14 +27,23 @@ export interface EvidenceDto {
   executionId: string;
   executionStepId: string;
   kind: CompletionKind;
-  /** URL tương đối để tải: GET /evidence/:id */
+  /** URL tương đối để tải: GET /evidence/:id (chỉ có với PHOTO/FILE). */
   url: string;
   fileName: string;
   mimeType: string;
   sizeBytes: number;
+  /** T4: giá trị nhập liệu cho FIELD/FORM/CONFIRM/SCAN/NOTE (JSON cho FORM). */
+  valueText: string | null;
   uploadedBy: string;
   uploadedByName: string | null;
   uploadedAt: string;
+}
+
+/** T4: body tạo bằng chứng phi tệp (PRC-006). */
+export interface CreateValueEvidenceBody {
+  kind: 'FIELD' | 'FORM' | 'CONFIRM' | 'SCAN' | 'NOTE';
+  label: string;
+  value: string;
 }
 
 export interface ExecutionStepDto {
