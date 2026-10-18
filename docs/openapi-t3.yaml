@@ -70,8 +70,10 @@ paths:
         '403': { description: 'ASSIGNEE_ONLY (+audit)' }
         '409': { description: STEP_STATE_INVALID }
   /executions/{id}/complete:
+    # D-16 (18/10/2026): endpoint đã XÓA — thay bằng POST /executions/{id}/submit
+    # ("Báo hoàn thành", IN_PROGRESS -> PENDING_APPROVAL). Giữ mục này làm lịch sử.
     post:
-      summary: Kết thúc lượt (mọi bước bắt buộc đã DONE)
+      summary: (ĐÃ XÓA ở D-16) Kết thúc lượt (mọi bước bắt buộc đã DONE)
       responses:
         '200': { description: '{ execution }' }
         '400': { description: STEPS_INCOMPLETE }
