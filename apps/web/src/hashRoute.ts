@@ -21,7 +21,9 @@ export type Route =
   | { nav: 'processes'; processId?: string; mode?: 'edit' | 'review'; versionId?: string }
   | { nav: 'executions'; executionId?: string }
   | { nav: 'reports' }
-  | { nav: 'admin' };
+  | { nav: 'admin' }
+  | { nav: 'evidence' }
+  | { nav: 'exceptions' };
 
 /** Đọc route hiện tại từ location.hash. Hash lạ/không hợp lệ → overview. */
 export function parseHash(hash?: string): Route {
@@ -47,6 +49,12 @@ export function parseHash(hash?: string): Route {
   if (parts[0] === 'admin') {
     return { nav: 'admin' };
   }
+  if (parts[0] === 'evidence') {
+    return { nav: 'evidence' };
+  }
+  if (parts[0] === 'exceptions') {
+    return { nav: 'exceptions' };
+  }
   return { nav: 'overview' };
 }
 
@@ -67,6 +75,12 @@ export function toHash(r: Route): string {
   }
   if (r.nav === 'admin') {
     return '#/admin';
+  }
+  if (r.nav === 'evidence') {
+    return '#/evidence';
+  }
+  if (r.nav === 'exceptions') {
+    return '#/exceptions';
   }
   return '#/';
 }
