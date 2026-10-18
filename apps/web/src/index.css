@@ -1659,6 +1659,13 @@ img.logo-img {
   .proc-head {
     flex-direction: column;
   }
+
+  /* Màn chi tiết quy trình vừa khít mobile: chặn tràn ngang ở cấp trang,
+     chỉ bảng Lịch sử phiên bản (.ver-timeline) được cuộn ngang riêng. */
+  .main {
+    overflow-x: clip;
+    padding: 1.2rem 1rem 3rem;
+  }
 }
 
 /* ---- Sơ đồ quy trình (ProcessDiagram, SVG) ---- */
