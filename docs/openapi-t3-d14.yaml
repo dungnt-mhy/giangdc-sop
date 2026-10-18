@@ -1,0 +1,139 @@
+# OpenAPI bổ sung D-14 — Thiết kế lại luồng tạo lượt thực hiện (18/10/2026).
+# Bổ sung cho docs/openapi-t3.yaml (giữ nguyên T3, chỉ liệt kê thay đổi D-14).
+openapi: 3.1.0
+info:
+  title: SOP Execution API — D-14 supplement
+  version: 1.1.0
+paths:
+  /executions:
+    post:
+      summary: Tạo lượt thực hiện (D-14: form đơn giản)
+      description: |
+        D-14 thay dialog cồng kềnh (chọn quy trình -> load bước -> phân công từng bước)
+        bằng form đơn giản. `assignments` KHÔNG bắt buộc — bước thiếu gán được tạo
+        với performer/supervisor NULL ("chưa phân công"), phân công sau ở màn hình
+        chi tiết qua POST /executions/{id}/steps/{stepId}/assign.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [processVersionId]
+              properties:
+                processVersionId:
+                  type: string
+                  description: id phiên bản quy trình — phải ở trạng thái ACTIVE.
+                orgUnitId:
+                  type: string
+                  nullable: true
+                note:
+                  type: string
+                  nullable: true
+                assignments:
+                  type: array
+                  description: Không bắt buộc (mặc định []). Nếu có, mỗi phần tử vẫn validate như cũ.
+                  items:
+                    type: object
+                    required: [stepId, performerUserId]
+                    properties:
+                      stepId:
+                        type: string
+                      performerUserId:
+                        type: string
+                      supervisorUserId:
+                        type: string
+                        nullable: true
+                title:
+                  type: string
+                  nullable: true
+                  description: Tiêu đề lượt.
+                executionDate:
+                  type: string
+                  nullable: true
+                  pattern: '^\d{4}-\d{2}-\d{2}$'
+                  description: Ngày thực hiện YYYY-MM-DD (mặc định = hôm nay phía server).
+                executionTime:
+                  type: string
+                  nullable: true
+                  pattern: '^([01]\d|2[0-3]):[0-5]\d$'
+                  description: Giờ thực hiện HH:MM (24h).
+                shift:
+                  type: string
+                  nullable: true
+                  enum: [SANG, CHIEU, TOI]
+                  description: Ca làm việc.
+                createdBy:
+                  type: string
+                  nullable: true
+                  description: Người chịu trách nhiệm tạo lượt (mặc định = người gọi API).
+                mainPerformerId:
+                  type: string
+                  nullable: true
+                  description: Người thực hiện chính.
+                supervisorId:
+                  type: string
+                  nullable: true
+                  description: Người giám sát.
+      responses:
+        '201':
+          description: Đã tạo lượt.
+        '400':
+          description: |
+            INVALID_EXECUTION_DATE | INVALID_EXECUTION_TIME | INVALID_SHIFT |
+            UNKNOWN_USER | UNKNOWN_STEP | DUPLICATE_ASSIGNMENT |
+            ASSIGNEE_POSITION_MISMATCH (mã lỗi chuẩn {code, message, requestId}).
+  /executions/{id}/steps/{stepId}/assign:
+    post:
+      summary: Phân công người cho bước (D-14)
+      description: |
+        Gán/thay người thực hiện + giám sát cho một bước "chưa phân công"
+        (hoặc đổi người khi bước chưa DONE). Tái kiểm tra chức vụ đúng như lúc tạo lượt:
+        performer phải giữ ≥1 chức vụ trong "Vai trò thực hiện" của bước (bước không
+        định nghĩa chức vụ thì ai cũng được); supervisor tương tự.
+        Quyền: execution.operate. Idempotency-Key bắt buộc.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: stepId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [performerUserId]
+              properties:
+                performerUserId:
+                  type: string
+                supervisorUserId:
+                  type: string
+                  nullable: true
+      responses:
+        '200':
+          description: Đã phân công; trả về step đã cập nhật.
+        '400':
+          description: UNKNOWN_USER | ASSIGNEE_POSITION_MISMATCH | INVALID_REQUEST.
+        '404':
+          description: NOT_FOUND | STEP_NOT_FOUND.
+        '409':
+          description: STEP_STATE_INVALID (bước đã DONE) | EXECUTION_STATE_INVALID.
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: Khóa idempotency (BR-014). Đúng tên "Idempotency-Key", không tiền tố X-.
