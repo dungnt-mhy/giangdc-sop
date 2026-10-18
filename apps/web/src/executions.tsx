@@ -4,18 +4,25 @@
  */
 import React from 'react';
 import type {
+  AssignStepBody,
   CreateExecutionBody,
   EvidenceDto,
   ExecutionDto,
+  ExecutionShift,
   ExecutionState,
   ExecutionStepDto,
   ExecutionStepState,
   PositionDto,
   ProcessDto,
   ProcessVersionDto,
-  StepAssignmentBody,
 } from '@giangdc-sop/contracts';
 import { api, API_BASE } from './App.js';
+
+const SHIFT_LABEL: Record<ExecutionShift, string> = {
+  SANG: 'Sáng',
+  CHIEU: 'Chiều',
+  TOI: 'Tối',
+};
 
 const EXEC_STATE_LABEL: Record<ExecutionState, string> = {
   CREATED: 'Mới tạo',
@@ -160,7 +167,10 @@ export function ExecutionsView({ perms, userId }: { perms: string[]; userId: str
                     {EXEC_STATE_LABEL[ex.state]}
                   </span>
                 </div>
-                <div className="exec-card-title">{ex.processName} — Bản v{ex.versionNo}</div>
+                <div className="exec-card-title">
+                  {ex.title ? <>{ex.title} <span className="muted">· {ex.processName}</span></> : ex.processName}
+                  {' '}— Bản v{ex.versionNo}
+                </div>
                 <div className="exec-progress">
                   <div className="exec-progress-bar">
                     <div
@@ -181,6 +191,7 @@ export function ExecutionsView({ perms, userId }: { perms: string[]; userId: str
       )}
       {showCreate && (
         <CreateExecutionForm
+          userId={userId}
           onDone={(id) => { setShowCreate(false); setDetailId(id); }}
           onCancel={() => setShowCreate(false)}
         />
@@ -313,17 +324,25 @@ function StepWorkCard({
   executionId,
   userId,
   canOperate,
+  users,
+  positions,
+  req,
   onChanged,
 }: {
   step: ExecutionStepDto;
   executionId: string;
   userId: string;
   canOperate: boolean;
+  users: AssignableUser[];
+  positions: PositionDto[];
+  req: StepPositionReq | undefined;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [showAssign, setShowAssign] = React.useState(false);
   const isMine = step.performerUserId === userId;
+  const unassigned = !step.performerUserId;
   const needsPhoto =
     step.completion.some((c) => c.kind === 'PHOTO' && c.required) &&
     !step.evidence.some((e) => e.kind === 'PHOTO');
@@ -333,6 +352,36 @@ function StepWorkCard({
     setError('');
     try {
       await api(`/executions/${executionId}/steps/${step.id}/${action}`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey() },
+      });
+      onChanged();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** D-14: bắt đầu bước chưa phân công — tự gán cho mình nếu chức vụ khớp. */
+  const startUnassigned = async () => {
+    if (busy) return;
+    const me = users.find((u) => u.id === userId);
+    const need = req?.performerPositions.map((p) => p.id) ?? [];
+    const mine = me?.positionIds ?? [];
+    if (need.length > 0 && !need.some((id) => mine.includes(id))) {
+      setError('Bạn không có chức vụ phù hợp với bước này.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/executions/${executionId}/steps/${step.id}/assign`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey() },
+        body: JSON.stringify({ performerUserId: userId }),
+      });
+      await api(`/executions/${executionId}/steps/${step.id}/start`, {
         method: 'POST',
         headers: { 'Idempotency-Key': newIdemKey() },
       });
@@ -356,7 +405,7 @@ function StepWorkCard({
           {!step.required && <span className="chip sm muted">Tùy chọn</span>}
         </div>
         <div className="exec-step-people muted">
-          👤 {step.performerName ?? '—'}
+          👤 {step.performerName ?? 'Chưa phân công'}
           {step.supervisorName ? ` · 🛡 ${step.supervisorName}` : ''}
         </div>
       </div>
@@ -369,10 +418,22 @@ function StepWorkCard({
         </div>
       )}
 
-      {isMine && canOperate && step.state === 'PENDING' && (
-        <button type="button" className="btn-small primary" disabled={busy} onClick={() => post('start')}>
-          {busy ? 'Đang xử lý…' : '▶ Bắt đầu bước'}
-        </button>
+      {canOperate && step.state === 'PENDING' && (
+        <div className="step-work-actions">
+          {isMine && (
+            <button type="button" className="btn-small primary" disabled={busy} onClick={() => post('start')}>
+              {busy ? 'Đang xử lý…' : '▶ Bắt đầu bước'}
+            </button>
+          )}
+          {unassigned && (
+            <button type="button" className="btn-small primary" disabled={busy} onClick={startUnassigned}>
+              {busy ? 'Đang xử lý…' : '▶ Bắt đầu'}
+            </button>
+          )}
+          <button type="button" className="btn-small" disabled={busy} onClick={() => setShowAssign(true)}>
+            👥 Phân công
+          </button>
+        </div>
       )}
 
       {isMine && canOperate && step.state === 'IN_PROGRESS' && (
@@ -397,6 +458,18 @@ function StepWorkCard({
         </div>
       )}
 
+      {showAssign && (
+        <AssignStepDialog
+          executionId={executionId}
+          step={step}
+          req={req}
+          users={users}
+          positions={positions}
+          onDone={() => { setShowAssign(false); onChanged(); }}
+          onClose={() => setShowAssign(false)}
+        />
+      )}
+
       {error && <div className="form-error">{error}</div>}
     </div>
   );
@@ -417,6 +490,9 @@ export function ExecutionDetail({
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
+  const [users, setUsers] = React.useState<AssignableUser[]>([]);
+  const [positions, setPositions] = React.useState<PositionDto[]>([]);
+  const [stepReqs, setStepReqs] = React.useState<Record<string, StepPositionReq>>({});
   const canOperate = perms.includes('execution.operate');
 
   const load = React.useCallback(async () => {
@@ -425,6 +501,31 @@ export function ExecutionDetail({
     try {
       const d = (await api(`/executions/${executionId}`)) as { execution: ExecutionDto };
       setEx(d.execution);
+      // Yêu cầu chức vụ từng bước (D-14) — lấy từ bản quy trình, khớp theo step_code.
+      try {
+        const v = (await api(`/versions/${d.execution.versionId}`)) as {
+          version: ProcessVersionDto;
+          steps: VersionStepLite[];
+        };
+        const map: Record<string, StepPositionReq> = {};
+        for (const s of v.steps ?? []) {
+          map[s.code] = {
+            performerPositions: s.performerPositions ?? [],
+            supervisorPositions: s.supervisorPositions ?? [],
+          };
+        }
+        setStepReqs(map);
+      } catch {
+        /* không chặn hiển thị chi tiết */
+      }
+      try {
+        const u = (await api('/assignable-users')) as { items: AssignableUser[] };
+        setUsers(u.items ?? []);
+        const p = (await api('/positions')) as { items: PositionDto[] };
+        setPositions(p.items ?? []);
+      } catch {
+        /* không chặn hiển thị chi tiết */
+      }
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -473,10 +574,21 @@ export function ExecutionDetail({
       <button type="button" className="btn-small" onClick={onBack}>← Danh sách lượt</button>
       <div className="proc-head">
         <div>
-          <h3><code>{ex.code}</code> {ex.processName}</h3>
+          <h3><code>{ex.code}</code> {ex.title || ex.processName}</h3>
           <p className="sec-desc">
-            Bản v{ex.versionNo} · {ex.createdByName ?? ''} · {new Date(ex.createdAt).toLocaleString('vi-VN')}
+            {ex.title ? <>{ex.processName} · </> : null}Bản v{ex.versionNo}
+            {ex.executionDate ? ` · Ngày thực hiện: ${ex.executionDate}` : ''}
+            {ex.executionTime ? ` ${ex.executionTime}` : ''}
+            {ex.shift ? ` · Ca: ${SHIFT_LABEL[ex.shift]}` : ''}
             {ex.orgUnitName ? ` · ${ex.orgUnitName}` : ''}
+          </p>
+          <p className="sec-desc">
+            Người tạo: {ex.createdByName ?? '—'}
+            {' · '}Người thực hiện chính: {ex.mainPerformerName ?? ex.createdByName ?? '—'}
+            {ex.supervisorName ? ` · Người giám sát: ${ex.supervisorName}` : ''}
+          </p>
+          <p className="sec-desc">
+            Tạo lúc {new Date(ex.createdAt).toLocaleString('vi-VN')}
           </p>
           {ex.note && <p className="sec-desc">📝 {ex.note}</p>}
         </div>
@@ -503,6 +615,9 @@ export function ExecutionDetail({
               executionId={ex.id}
               userId={userId}
               canOperate={canOperate}
+              users={users}
+              positions={positions}
+              req={stepReqs[s.stepCode]}
               onChanged={load}
             />
           ))}
@@ -546,6 +661,12 @@ interface VersionStepLite {
   supervisorPositions: PositionDto[];
 }
 
+/** Yêu cầu chức vụ của một bước (D-14) — dùng cho dialog phân công. */
+interface StepPositionReq {
+  performerPositions: PositionDto[];
+  supervisorPositions: PositionDto[];
+}
+
 interface AssignableUser {
   id: string;
   username: string;
@@ -553,24 +674,136 @@ interface AssignableUser {
   positionIds: string[];
 }
 
+/* ---------------- Dialog phân công bước (D-14) ---------------- */
+
+/** D-14: chọn tên người kèm chức vụ ("Nguyễn Văn A — Thủ kho"), lọc theo vai trò bước. */
+function AssignStepDialog({
+  executionId,
+  step,
+  req,
+  users,
+  positions,
+  onDone,
+  onClose,
+}: {
+  executionId: string;
+  step: ExecutionStepDto;
+  req: StepPositionReq | undefined;
+  users: AssignableUser[];
+  positions: PositionDto[];
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const [performer, setPerformer] = React.useState(step.performerUserId ?? '');
+  const [supervisor, setSupervisor] = React.useState(step.supervisorUserId ?? '');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const posName = (id: string) => positions.find((p) => p.id === id)?.name ?? id;
+  const userLabel = (u: AssignableUser) => {
+    const names = u.positionIds.map(posName).filter((x) => x && x !== '');
+    return `${u.displayName} — ${names.join(', ') || '—'}`;
+  };
+  const filterByPositions = (need: PositionDto[]) => {
+    if (need.length === 0) return users;
+    const set = new Set(need.map((p) => p.id));
+    return users.filter((u) => u.positionIds.some((id) => set.has(id)));
+  };
+  const perfReq = req?.performerPositions ?? [];
+  const supReq = req?.supervisorPositions ?? [];
+  const perfCandidates = filterByPositions(perfReq);
+  const supCandidates = filterByPositions(supReq);
+
+  const submit = async () => {
+    if (!performer || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const body: AssignStepBody = {
+        performerUserId: performer,
+        supervisorUserId: supervisor || null,
+      };
+      await api(`/executions/${executionId}/steps/${step.id}/assign`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey() },
+        body: JSON.stringify(body),
+      });
+      onDone();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reqHint = (need: PositionDto[]) =>
+    need.length === 0
+      ? 'Bước này chưa gắn chức vụ — ai cũng có thể nhận.'
+      : `Chỉ hiện người giữ chức vụ: ${need.map((p) => p.name).join(', ')}.`;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>👥 Phân công bước {step.stepCode}</h3>
+        <p className="sec-desc">{step.title}</p>
+        <div className="field">
+          <label>Người thực hiện *</label>
+          <select className="input" value={performer} onChange={(e) => setPerformer(e.target.value)}>
+            <option value="">— Chọn —</option>
+            {perfCandidates.map((u) => (
+              <option key={u.id} value={u.id}>{userLabel(u)}</option>
+            ))}
+          </select>
+          <p className="sec-desc">{reqHint(perfReq)}</p>
+        </div>
+        <div className="field">
+          <label>Người giám sát</label>
+          <select className="input" value={supervisor} onChange={(e) => setSupervisor(e.target.value)}>
+            <option value="">— Không gán —</option>
+            {supCandidates.map((u) => (
+              <option key={u.id} value={u.id}>{userLabel(u)}</option>
+            ))}
+          </select>
+          <p className="sec-desc">{reqHint(supReq)}</p>
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        <div className="modal-actions">
+          <button type="button" className="btn-ghost" onClick={onClose}>Hủy</button>
+          <button type="button" className="btn-primary" disabled={busy || !performer} onClick={submit}>
+            {busy ? 'Đang lưu…' : 'Lưu phân công'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- Form tạo lượt đơn giản (D-14) ---------------- */
+
 function CreateExecutionForm({
+  userId,
   onDone,
   onCancel,
 }: {
+  userId: string;
   onDone: (executionId: string) => void;
   onCancel: () => void;
 }) {
   const [processes, setProcesses] = React.useState<ProcessDto[]>([]);
-  const [processId, setProcessId] = React.useState('');
-  const [version, setVersion] = React.useState<ProcessVersionDto | null>(null);
-  const [steps, setSteps] = React.useState<VersionStepLite[]>([]);
   const [users, setUsers] = React.useState<AssignableUser[]>([]);
-  const [positions, setPositions] = React.useState<PositionDto[]>([]);
-  const [note, setNote] = React.useState('');
-  const [assign, setAssign] = React.useState<Record<string, { performer: string; supervisor: string }>>({});
+  const [processId, setProcessId] = React.useState('');
+  const [versionId, setVersionId] = React.useState('');
+  const [versionNo, setVersionNo] = React.useState<number | null>(null);
+  const [title, setTitle] = React.useState('');
+  const [executionDate, setExecutionDate] = React.useState(() => new Date().toISOString().slice(0, 10));
+  const [executionTime, setExecutionTime] = React.useState('');
+  const [shift, setShift] = React.useState('');
+  const [createdBy, setCreatedBy] = React.useState(userId);
+  const [mainPerformerId, setMainPerformerId] = React.useState('');
+  const [supervisorId, setSupervisorId] = React.useState('');
   const [error, setError] = React.useState('');
   const [busy, setBusy] = React.useState(false);
-  const [loadingSteps, setLoadingSteps] = React.useState(false);
+  const [loadingVersion, setLoadingVersion] = React.useState(false);
 
   React.useEffect(() => {
     api('/processes?hasActiveVersion=1&limit=100')
@@ -579,18 +812,14 @@ function CreateExecutionForm({
     api('/assignable-users')
       .then((d) => setUsers((d as { items: AssignableUser[] }).items ?? []))
       .catch(() => setUsers([]));
-    api('/positions')
-      .then((d) => setPositions((d as { items: PositionDto[] }).items ?? []))
-      .catch(() => setPositions([]));
   }, []);
 
   const loadVersion = async (pid: string) => {
     setProcessId(pid);
-    setVersion(null);
-    setSteps([]);
-    setAssign({});
+    setVersionId('');
+    setVersionNo(null);
     if (!pid) return;
-    setLoadingSteps(true);
+    setLoadingVersion(true);
     setError('');
     try {
       const v = (await api(`/processes/${pid}/versions`)) as { versions: ProcessVersionDto[] };
@@ -599,55 +828,31 @@ function CreateExecutionForm({
         setError('Quy trình chưa có bản ACTIVE — không thể tạo lượt.');
         return;
       }
-      setVersion(active);
-      const det = (await api(`/versions/${active.id}`)) as {
-        version: ProcessVersionDto;
-        steps: VersionStepLite[];
-      };
-      const ss = det.steps ?? [];
-      setSteps(ss);
-      const init: Record<string, { performer: string; supervisor: string }> = {};
-      for (const s of ss) init[s.id] = { performer: '', supervisor: '' };
-      setAssign(init);
+      setVersionId(active.id);
+      setVersionNo(active.versionNo);
     } catch (e) {
       setError(errMsg(e));
     } finally {
-      setLoadingSteps(false);
+      setLoadingVersion(false);
     }
   };
 
-  const posName = (id: string) => positions.find((p) => p.id === id)?.name ?? id;
-
-  const candidates = (step: VersionStepLite, kind: 'performer' | 'supervisor') => {
-    const need =
-      kind === 'performer'
-        ? step.performerPositions.map((p) => p.id)
-        : step.supervisorPositions.map((p) => p.id);
-    if (need.length === 0) return users;
-    const needSet = new Set(need);
-    return users.filter((u) => u.positionIds.some((id) => needSet.has(id)));
-  };
-
-  const setA = (stepId: string, field: 'performer' | 'supervisor', value: string) => {
-    setAssign((prev) => ({ ...prev, [stepId]: { ...prev[stepId], [field]: value } }));
-  };
-
-  const valid = steps.length > 0 && steps.every((s) => assign[s.id]?.performer);
+  const valid = processId !== '' && versionId !== '' && executionDate !== '' && createdBy !== '';
 
   const submit = async () => {
-    if (!version || !valid || busy) return;
+    if (!valid || busy) return;
     setBusy(true);
     setError('');
     try {
-      const assignments: StepAssignmentBody[] = steps.map((s) => ({
-        stepId: s.id,
-        performerUserId: assign[s.id].performer,
-        supervisorUserId: assign[s.id].supervisor || null,
-      }));
       const body: CreateExecutionBody = {
-        processVersionId: version.id,
-        note: note.trim() || null,
-        assignments,
+        processVersionId: versionId,
+        title: title.trim() || null,
+        executionDate: executionDate || null,
+        executionTime: executionTime || null,
+        shift: (shift || null) as ExecutionShift | null,
+        createdBy: createdBy || null,
+        mainPerformerId: mainPerformerId || null,
+        supervisorId: supervisorId || null,
       };
       const d = (await api('/executions', {
         method: 'POST',
@@ -664,7 +869,7 @@ function CreateExecutionForm({
 
   return (
     <div className="modal-backdrop" onClick={onCancel}>
-      <div className="modal wide" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h3>Tạo lượt thực hiện</h3>
         <div className="field">
           <label>Quy trình *</label>
@@ -674,81 +879,82 @@ function CreateExecutionForm({
               <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
             ))}
           </select>
+          <p className="sec-desc">Chỉ hiện quy trình có phiên bản đang hiệu lực.</p>
         </div>
-        {loadingSteps && <div className="empty">Đang tải bản ACTIVE…</div>}
-        {version && (
-          <p className="sec-desc">
-            Dùng bản <strong>v{version.versionNo} (ACTIVE)</strong> — gán người cho từng bước.
-            Người thực hiện phải giữ chức vụ khớp "Vai trò thực hiện" của bước (nếu có).
-          </p>
+        {loadingVersion && <div className="empty">Đang tải bản ACTIVE…</div>}
+        {versionNo !== null && (
+          <p className="sec-desc">Dùng bản <strong>v{versionNo} (ACTIVE)</strong>.</p>
         )}
-        {steps.map((s) => {
-          const perfs = candidates(s, 'performer');
-          const sups = candidates(s, 'supervisor');
-          return (
-            <div key={s.id} className="assign-row">
-              <div className="assign-step">
-                <code>{s.code}</code> {s.title}
-                <div className="muted sm-text">
-                  Vai trò thực hiện: {s.performerPositions.length > 0 ? s.performerPositions.map((p) => p.name).join(', ') : '—'}
-                  {' · '}Vai trò giám sát: {s.supervisorPositions.length > 0 ? s.supervisorPositions.map((p) => p.name).join(', ') : '—'}
-                </div>
-              </div>
-              <div className="assign-fields">
-                <div className="field">
-                  <label>Người thực hiện *</label>
-                  <select
-                    className="input"
-                    value={assign[s.id]?.performer ?? ''}
-                    onChange={(e) => setA(s.id, 'performer', e.target.value)}
-                  >
-                    <option value="">— Chọn —</option>
-                    {perfs.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.displayName} ({u.positionIds.map(posName).join(', ') || '—'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field">
-                  <label>Người giám sát</label>
-                  <select
-                    className="input"
-                    value={assign[s.id]?.supervisor ?? ''}
-                    onChange={(e) => setA(s.id, 'supervisor', e.target.value)}
-                  >
-                    <option value="">— Không gán —</option>
-                    {sups.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.displayName} ({u.positionIds.map(posName).join(', ') || '—'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {steps.length > 0 && (
-          <div className="field">
-            <label>Ghi chú</label>
-            <input
-              className="input"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Ghi chú cho lượt thực hiện (không bắt buộc)"
-            />
-          </div>
-        )}
+        <div className="field">
+          <label>Tiêu đề lượt</label>
+          <input
+            className="input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="VD: Xuất hàng đợt sáng 18/10"
+          />
+        </div>
+        <div className="field">
+          <label>Ngày thực hiện *</label>
+          <input
+            type="date"
+            className="input"
+            value={executionDate}
+            onChange={(e) => setExecutionDate(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Giờ thực hiện</label>
+          <input
+            type="time"
+            className="input"
+            value={executionTime}
+            onChange={(e) => setExecutionTime(e.target.value)}
+          />
+        </div>
+        <div className="field">
+          <label>Ca làm việc</label>
+          <select className="input" value={shift} onChange={(e) => setShift(e.target.value)}>
+            <option value="">— Chọn ca —</option>
+            <option value="SANG">Sáng</option>
+            <option value="CHIEU">Chiều</option>
+            <option value="TOI">Tối</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Người tạo *</label>
+          <select className="input" value={createdBy} onChange={(e) => setCreatedBy(e.target.value)}>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.displayName}{u.id === userId ? ' (tôi)' : ''}
+              </option>
+            ))}
+          </select>
+          <p className="sec-desc">Người chịu trách nhiệm tạo lượt thực hiện này.</p>
+        </div>
+        <div className="field">
+          <label>Người thực hiện chính</label>
+          <select className="input" value={mainPerformerId} onChange={(e) => setMainPerformerId(e.target.value)}>
+            <option value="">Tôi (mặc định)</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.displayName}</option>
+            ))}
+          </select>
+          <p className="sec-desc">Để trống = người tạo cũng là người thực hiện chính.</p>
+        </div>
+        <div className="field">
+          <label>Người giám sát</label>
+          <select className="input" value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)}>
+            <option value="">— Không có —</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>{u.displayName}</option>
+            ))}
+          </select>
+        </div>
         {error && <div className="form-error">{error}</div>}
         <div className="modal-actions">
           <button type="button" className="btn-ghost" onClick={onCancel}>Hủy</button>
-          <button
-            type="button"
-            className="btn-primary"
-            disabled={busy || !valid}
-            onClick={submit}
-          >
+          <button type="button" className="btn-primary" disabled={busy || !valid} onClick={submit}>
             {busy ? 'Đang tạo…' : 'Tạo lượt'}
           </button>
         </div>
