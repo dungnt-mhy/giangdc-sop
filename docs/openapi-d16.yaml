@@ -1,0 +1,69 @@
+# OpenAPI bổ sung D-16 (18/10/2026) — bước tuần tự + Báo/Xác nhận hoàn thành.
+# Giữ nguyên docs/openapi-t3.yaml (T3), docs/openapi-t3-d14.yaml (D-14), docs/openapi-d15.yaml (D-15).
+# Thay đổi so với D-15:
+# - XÓA POST /executions/{id}/complete (nút "Hoàn thành lượt" bỏ).
+# - POST /executions/{id}/submit đổi thành "Báo hoàn thành": IN_PROGRESS -> PENDING_APPROVAL
+#   (giữ COMPLETED -> PENDING_APPROVAL cho tương thích), yêu cầu mọi bước bắt buộc DONE
+#   (thiếu -> 400 STEPS_INCOMPLETE).
+# - POST /executions/{id}/cancel-submit: PENDING_APPROVAL -> IN_PROGRESS (đổi từ COMPLETED).
+# - POST /executions/{id}/reject: PENDING_APPROVAL -> IN_PROGRESS (đổi từ COMPLETED), lý do bắt buộc.
+# - POST /executions/{id}/steps/{stepId}/start: chỉ khi lượt IN_PROGRESS (bỏ CREATED)
+#   + bước phải tuần tự (mọi bước trước DONE), thiếu -> 409 STEP_OUT_OF_ORDER.
+# - Nhãn UI: PENDING_APPROVAL = "Chờ xác nhận" (cũ "Chờ duyệt"); APPROVED = "Hoàn thành" (cũ "Đã duyệt").
+openapi: 3.0.3
+info:
+  title: SOP Execution API — D-16
+  version: 1.6.0
+paths:
+  /executions/{id}/submit:
+    post:
+      summary: Báo hoàn thành (IN_PROGRESS -> PENDING_APPROVAL). Yêu cầu mọi bước bắt buộc DONE. Quyền: người tạo lượt hoặc execution.operate.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Execution mới + thông báo "đã báo hoàn thành" tới người duyệt }
+        '400': { description: STEPS_INCOMPLETE }
+        '403': { description: FORBIDDEN }
+        '409': { description: EXECUTION_STATE_INVALID }
+  /executions/{id}/cancel-submit:
+    post:
+      summary: Hủy báo hoàn thành (PENDING_APPROVAL -> IN_PROGRESS). Chỉ người đã báo hoặc senior.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Execution mới }
+        '403': { description: FORBIDDEN }
+  /executions/{id}/approve:
+    post:
+      summary: Xác nhận hoàn thành (PENDING_APPROVAL -> APPROVED). Người duyệt = supervisor của lượt hoặc senior_approver.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Execution mới + thông báo "đã được xác nhận hoàn thành" tới người báo }
+        '403': { description: FORBIDDEN }
+  /executions/{id}/reject:
+    post:
+      summary: Từ chối xác nhận (PENDING_APPROVAL -> IN_PROGRESS, lý do bắt buộc).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        '200': { description: Execution mới + thông báo "bị từ chối xác nhận" tới người báo }
+        '400': { description: REASON_REQUIRED }
+        '403': { description: FORBIDDEN }
+  /executions/{id}/steps/{stepId}/start:
+    post:
+      summary: Bắt đầu bước — chỉ khi lượt IN_PROGRESS và mọi bước trước đã DONE (tuần tự).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: stepId, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: '{ step, executionState }' }
+        '409': { description: EXECUTION_STATE_INVALID | STEP_STATE_INVALID | STEP_OUT_OF_ORDER }
