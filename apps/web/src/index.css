@@ -2297,3 +2297,198 @@ img.logo-img {
 .chip.sev-medium { background: #fef3c7; color: #92400e; }
 .chip.sev-high { background: #fee2e2; color: #991b1b; }
 .chip.sev-blocking { background: #dc2626; color: #fff; font-weight: 700; }
+
+/* ---- Trang Quản trị (T7: ADM-001..006) ---- */
+.search-input {
+  padding: 0.55rem 0.8rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid #d3dae4;
+  border-radius: 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.search-input:focus {
+  outline: none;
+  border-color: var(--blue-500);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+.error-banner {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+.check-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid #d3dae4;
+  border-radius: 10px;
+  padding: 0.6rem 0.8rem;
+  background: #fbfcff;
+}
+.check-list .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.check-list .check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--navy-700);
+}
+.perm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.perm-chip {
+  font-family: monospace;
+  font-size: 0.75rem;
+  background: #eef2f7;
+  color: #334155;
+  border: 1px solid #dbe3ee;
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+/* ---- T6: Báo cáo/KPI (RPT-001..006) ---- */
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.filter-field > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+}
+.kpi-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.kpi-card.static {
+  cursor: default;
+}
+.kpi-card:not(.static):hover {
+  border-color: var(--navy-600);
+}
+.kpi-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.kpi-value {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--navy-900);
+  margin: 0.3rem 0;
+}
+.kpi-value.na {
+  color: var(--muted);
+  font-size: 1.4rem;
+}
+.kpi-sub {
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.kpi-def {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+  line-height: 1.45;
+}
+.kpi-drill {
+  font-size: 0.78rem;
+  color: var(--blue-600);
+  margin-top: 0.4rem;
+  font-weight: 600;
+}
+.kpi-bystates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+}
+.drill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.drill-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.drill-item:hover {
+  border-color: var(--navy-600);
+}
+.drill-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+.modal-head h4 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.muted.small {
+  font-size: 0.8rem;
+}
+@media (max-width: 860px) {
+  .filter-row {
+    flex-wrap: wrap;
+  }
+  .filter-field {
+    flex: 1 1 45%;
+    min-width: 140px;
+  }
+}
