@@ -182,8 +182,11 @@ export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetail
                   <span className={`chip sm ${EXEC_STATE_CHIP[ex.state]}`}>
                     {EXEC_STATE_LABEL[ex.state]}
                   </span>
-                  {ex.rejectedStepCount > 0 && (
+                  {ex.lastRejectKind === 'steps' && (
                     <span className="chip sm warn">🔄 Bị trả lại: {ex.rejectedStepCount} bước</span>
+                  )}
+                  {ex.lastRejectKind === 'all' && (
+                    <span className="chip sm warn">🔄 Bị trả lại làm lại</span>
                   )}
                 </div>
                 <div className="exec-card-title">
