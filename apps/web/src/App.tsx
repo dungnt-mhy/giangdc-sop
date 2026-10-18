@@ -1,6 +1,7 @@
 import React from 'react';
 import { ProcessesView } from './processes.js';
 import { ExecutionsView } from './executions.js';
+import { parseHash, setHash } from './hashRoute.js';
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 const LOGO_URL = `${import.meta.env.BASE_URL}logo.webp`;
@@ -391,10 +392,33 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   const primaryRole = me.roles[0];
   const initial = me.user.displayName.charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [nav, setNav] = React.useState('overview');
-  const [notifExecId, setNotifExecId] = React.useState<string | null>(null);
+  // Hash-routing: refresh giữ nguyên trang (không về tổng quan).
+  const [nav, setNav] = React.useState<string>(() => {
+    const r = parseHash();
+    if (r.nav === 'processes') return 'processes';
+    if (r.nav === 'executions') return 'execution';
+    return 'overview';
+  });
   const isSeniorApprover = me.roles.some((r) => r.seniorApprover);
   const [pendingApproval, setPendingApproval] = React.useState(0);
+
+  // Đồng bộ nav khi bấm back/forward của trình duyệt.
+  React.useEffect(() => {
+    const onHash = () => {
+      const r = parseHash();
+      const target = r.nav === 'processes' ? 'processes' : r.nav === 'executions' ? 'execution' : 'overview';
+      setNav((cur) => (cur === target ? cur : target));
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+
+  /** Chuyển phân hệ + cập nhật hash (tránh vòng lặp: setHash chỉ đổi khi khác). */
+  const goNav = (key: 'overview' | 'processes' | 'execution') => {
+    setNav(key);
+    setHash(key === 'overview' ? '#/' : key === 'processes' ? '#/processes' : '#/executions');
+    setDrawerOpen(false);
+  };
 
   // D-15: badge số lượt chờ duyệt trên menu (poll 60s).
   React.useEffect(() => {
@@ -413,8 +437,8 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   }, []);
 
   const openExecutionFromNotif = (executionId: string) => {
-    setNotifExecId(executionId);
-    setNav('execution');
+    // Đi qua hash để refresh vẫn giữ chi tiết lượt (thay cho notifExecId).
+    setHash(`#/executions/${executionId}`);
     setDrawerOpen(false);
   };
   const today = new Date()
@@ -448,10 +472,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
               className={`nav-item${nav === item.key ? ' active' : ''}`}
               disabled={!item.live}
               title={item.live ? item.label : `${item.label} — sắp ra mắt`}
-              onClick={() => {
-                setNav(item.key);
-                setDrawerOpen(false);
-              }}
+              onClick={() => goNav(item.key as 'overview' | 'processes' | 'execution')}
             >
               <span className="ico">{item.ico}</span>
               {item.label}
@@ -498,7 +519,6 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
             perms={me.permissions}
             userId={me.user.id}
             isSeniorApprover={isSeniorApprover}
-            externalDetailId={notifExecId}
           />
         ) : (
           <>
