@@ -28,8 +28,16 @@ interface ExecutionRow {
   org_unit_id: string | null;
   org_unit_name: string | null;
   note: string | null;
+  title: string | null;
+  execution_date: string | null;
+  execution_time: string | null;
+  shift: string | null;
   created_by: string;
   created_by_name: string | null;
+  main_performer_id: string | null;
+  main_performer_name: string | null;
+  supervisor_id: string | null;
+  supervisor_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,16 +76,22 @@ interface EvidenceRow {
 
 const EXECUTION_SELECT = `
   SELECT e.id, e.code, e.process_id, e.version_id, e.state, e.org_unit_id, e.note,
+         e.title, e.execution_date, e.execution_time, e.shift,
+         e.main_performer_id, e.supervisor_id,
          e.created_by, e.created_at, e.updated_at,
          p.code AS process_code, p.name AS process_name,
          pv.version_no AS version_no,
          ou.name AS org_unit_name,
-         u.display_name AS created_by_name
+         u.display_name AS created_by_name,
+         um.display_name AS main_performer_name,
+         us.display_name AS supervisor_name
   FROM executions e
   JOIN processes p ON p.id = e.process_id
   JOIN process_versions pv ON pv.id = e.version_id
   LEFT JOIN org_units ou ON ou.id = e.org_unit_id
   LEFT JOIN users u ON u.id = e.created_by
+  LEFT JOIN users um ON um.id = e.main_performer_id
+  LEFT JOIN users us ON us.id = e.supervisor_id
 `;
 
 export async function findExecution(db: D1Database, id: string): Promise<ExecutionRow | null> {
@@ -308,8 +322,16 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     orgUnitId: row.org_unit_id,
     orgUnitName: row.org_unit_name,
     note: row.note,
+    title: row.title,
+    executionDate: row.execution_date,
+    executionTime: row.execution_time,
+    shift: (row.shift as ExecutionDto['shift']) ?? null,
     createdBy: row.created_by,
     createdByName: row.created_by_name,
+    mainPerformerId: row.main_performer_id,
+    mainPerformerName: row.main_performer_name,
+    supervisorId: row.supervisor_id,
+    supervisorName: row.supervisor_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [])),
