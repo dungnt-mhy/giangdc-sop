@@ -496,6 +496,11 @@ function ProcessDetail({
       <section className="section">
         <h3>Lịch sử phiên bản</h3>
         <div className="ver-timeline">
+          <div className="ver-head" aria-hidden="true">
+            <span className="ver-no">Phiên bản</span>
+            <span className="ver-main">Thông tin</span>
+            <span>Thao tác</span>
+          </div>
           {versions.map((v) => (
             <div className="ver-row" key={v.id}>
               <div className="ver-no">v{v.versionNo}</div>
