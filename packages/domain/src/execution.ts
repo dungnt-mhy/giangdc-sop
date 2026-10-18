@@ -14,14 +14,16 @@ export type ExecutionState =
  * COMPLETED -> IN_PROGRESS is the reopen path, only when the feature/policy allows it.
  * D-15: COMPLETED -> PENDING_APPROVAL (gửi duyệt); PENDING_APPROVAL -> COMPLETED
  * (hủy duyệt / từ chối) hoặc APPROVED (duyệt).
+ * D-16: IN_PROGRESS -> PENDING_APPROVAL (báo hoàn thành — gộp "hoàn thành lượt" +
+ * "gửi duyệt" thành một bước); PENDING_APPROVAL -> IN_PROGRESS (hủy báo / từ chối).
  */
 const TRANSITIONS: Record<ExecutionState, ReadonlySet<ExecutionState>> = {
   CREATED: new Set(['IN_PROGRESS', 'CANCELLED']),
-  IN_PROGRESS: new Set(['PAUSED', 'BLOCKED', 'COMPLETED', 'CANCELLED']),
+  IN_PROGRESS: new Set(['PAUSED', 'BLOCKED', 'COMPLETED', 'PENDING_APPROVAL', 'CANCELLED']),
   PAUSED: new Set(['IN_PROGRESS', 'CANCELLED']),
   BLOCKED: new Set(['IN_PROGRESS', 'CANCELLED']),
   COMPLETED: new Set(['PENDING_APPROVAL', 'IN_PROGRESS']),
-  PENDING_APPROVAL: new Set(['COMPLETED', 'APPROVED']),
+  PENDING_APPROVAL: new Set(['IN_PROGRESS', 'COMPLETED', 'APPROVED']),
   APPROVED: new Set(),
   CANCELLED: new Set(),
 };
@@ -59,6 +61,20 @@ export function photoRequired(
   completion: ReadonlyArray<{ kind: string; required: boolean }>,
 ): boolean {
   return completion.some((c) => c.kind === 'PHOTO' && c.required);
+}
+
+/**
+ * D-16: Bước làm tuần tự — bước chỉ được bắt đầu khi mọi bước đứng trước
+ * (sortOrder nhỏ hơn) đều đã DONE. Áp dụng cả cho bước tùy chọn
+ * (bước tùy chọn chưa DONE vẫn khóa bước sau).
+ */
+export function canStartStepByOrder(
+  steps: ReadonlyArray<{ sortOrder: number; state: string }>,
+  targetSortOrder: number,
+): boolean {
+  return steps.every(
+    (s) => s.sortOrder >= targetSortOrder || s.state === 'DONE',
+  );
 }
 
 /**
