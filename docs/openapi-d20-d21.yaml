@@ -1,0 +1,203 @@
+# OpenAPI bổ sung D-20 + D-21 (18/10/2026) — vòng đời phiên bản mở rộng + từ chối theo bước.
+# Giữ nguyên docs/openapi-t3.yaml (T3), docs/openapi-t3-d14.yaml (D-14),
+# docs/openapi-d15.yaml (D-15), docs/openapi-d16.yaml (D-16), docs/openapi-d18.yaml (D-18).
+#
+# === D-20: Vòng đời phiên bản mở rộng ===
+# - Migration 0012 (apps/api/migrations/0012_version_void_state.sql): D-20b —
+#   D1 qua REST KHÔNG rebuild được bảng có FK (PRAGMA không giữ qua các call,
+#   RENAME tự cập nhật REFERENCES, writable_schema bị chặn) nên KHÔNG thêm 'VOID'
+#   vào CHECK; thay bằng 2 cột ADD COLUMN: voided_at, void_reason.
+#   "Đã hủy" <=> voided_at IS NOT NULL (không phải state).
+# - Domain: VERSION_TRANSITIONS giữ 7 state; thêm helper isVoided().
+#   APPROVED -> DRAFT (Hủy phê duyệt); ACTIVE -> RETIRED (Ngừng);
+#   SUPERSEDED|RETIRED -> IN_REVIEW (Kích hoạt lại, qua duyệt lại).
+#   Version đã hủy đóng băng mọi transition (API 409 VERSION_VOIDED).
+# - POST /versions/{id}/cancel-approval — APPROVED -> DRAFT; quyền process.approve;
+#   body { reason* }; ghi approval_records decision='RETURNED'; audit; idempotent.
+# - POST /versions/{id}/retire — ACTIVE -> RETIRED; quyền process.deprecate;
+#   body { reason? }; audit; idempotent.
+# - POST /versions/{id}/reactivate — SUPERSEDED|RETIRED -> IN_REVIEW; quyền
+#   process.edit; 409 ACTIVE_VERSION_EXISTS 'Phải ngừng bản đang hiệu lực trước
+#   khi kích hoạt lại.' nếu còn version khác ACTIVE/SCHEDULED cùng process;
+#   body { reason? }; audit; idempotent.
+# - POST /versions/{id}/void — SUPERSEDED|RETIRED: set voided_at/void_reason
+#   (giữ nguyên state); quyền process.deprecate; body { reason*, expectedRevision };
+#   đã hủy rồi -> 409 ALREADY_VOIDED; audit; idempotent. UI modal xác nhận + lý do,
+#   badge "Đã hủy" (.vbadge.st-void) suy từ flag, ẩn toàn bộ nút khi đã hủy.
+# - Web (processes.tsx): bảng Lịch sử phiên bản thêm nút theo state —
+#   APPROVED "Hủy phê duyệt", ACTIVE "Ngừng", SUPERSEDED/RETIRED "Kích hoạt lại"
+#   + "Hủy bỏ" (modal nhập lý do chung, không dùng window.confirm).
+#
+# === D-21: Từ chối theo bước ===
+# - Migration 0013 (apps/api/migrations/0013_review_step_ids.sql):
+#   ALTER TABLE execution_reviews ADD COLUMN step_ids TEXT; (JSON array, null = cả lượt).
+# - Contract:
+#   - ExecutionReviewDto thêm stepIds: string[] | null
+#   - ExecutionStepDto thêm redoCount: number (số lần bị trả làm lại)
+#   - ExecutionDto thêm rejectedStepCount: number (độ dài step_ids của review
+#     gần nhất nếu action='reject' và mode steps; 0 nếu không)
+#   - RejectApprovalBody thêm mode?: 'all'|'steps', stepIds?: string[]
+# - POST /executions/{id}/reject (mode=steps): stepIds bắt buộc, phải là bước DONE
+#   của lượt (404 STEP_NOT_FOUND / 409 STEP_NOT_DONE) -> mỗi bước DONE -> PENDING
+#   (xóa started_at/completed_at, GIỮ evidence); audit execution.step_redo từng bước;
+#   review ghi step_ids=JSON; thông báo "bị trả lại N bước làm lại".
+#   mode='all' (mặc định): hành vi cũ, step_ids=null.
+#   Giữ nguyên: lý do bắt buộc (400 REASON_REQUIRED), quyền canApproveExecution,
+#   transition về IN_PROGRESS, Idempotency-Key.
+# - Web (executions.tsx): dialog Từ chối — radio (a) "Trả toàn bộ lượt" /
+#   (b) "Chọn bước cần làm lại" + checkbox các bước DONE (chọn ít nhất 1, disable
+#   nút khi chưa chọn). Thẻ bước: badge "🔄 Làm lại lần N" khi redoCount>0,
+#   tooltip lý do lần trả gần nhất. Danh sách lượt: badge "🔄 Bị trả lại: N bước"
+#   khi rejectedStepCount>0. Detail: badge "🔄 Bị trả lại: N bước làm lại" khi
+#   mode steps; giữ "🔄 Bị trả lại làm lại" khi reject cả lượt. Lịch sử từ chối
+#   hiện mã các bước bị trả (vd: (B2, B3)).
+openapi: 3.0.3
+info:
+  title: SOP API — D-20 + D-21
+  version: 1.8.0
+paths:
+  /versions/{versionId}/cancel-approval:
+    post:
+      summary: D-20 — Hủy phê duyệt (APPROVED -> DRAFT). Quyền process.approve.
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, expectedRevision]
+              properties:
+                reason: { type: string, description: Lý do hủy phê duyệt }
+                expectedRevision: { type: integer, description: optimistic concurrency }
+      responses:
+        '200': { description: ProcessVersionDto mới ở DRAFT }
+        '400': { description: REASON_REQUIRED }
+        '403': { description: FORBIDDEN }
+        '404': { description: VERSION_NOT_FOUND }
+        '409': { description: VERSION_STATE_INVALID | REVISION_CONFLICT }
+  /versions/{versionId}/retire:
+    post:
+      summary: D-20 — Ngừng bản đang hiệu lực (ACTIVE -> RETIRED). Quyền process.deprecate.
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                reason: { type: string }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: ProcessVersionDto mới ở RETIRED }
+        '403': { description: FORBIDDEN }
+        '404': { description: VERSION_NOT_FOUND }
+        '409': { description: VERSION_STATE_INVALID | REVISION_CONFLICT }
+  /versions/{versionId}/reactivate:
+    post:
+      summary: D-20 — Kích hoạt lại (SUPERSEDED|RETIRED -> IN_REVIEW). Quyền process.edit.
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision]
+              properties:
+                reason: { type: string }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: ProcessVersionDto mới ở IN_REVIEW }
+        '403': { description: FORBIDDEN }
+        '404': { description: VERSION_NOT_FOUND }
+        '409': { description: VERSION_STATE_INVALID | REVISION_CONFLICT | ACTIVE_VERSION_EXISTS | VERSION_VOIDED }
+  /versions/{versionId}/void:
+    post:
+      summary: D-20b — Hủy bỏ phiên bản (SUPERSEDED|RETIRED, set cờ voided_at). Quyền process.deprecate.
+      parameters:
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason, expectedRevision]
+              properties:
+                reason: { type: string, description: Lý do hủy bỏ }
+                expectedRevision: { type: integer }
+      responses:
+        '200': { description: ProcessVersionDto đã set voidedAt/voidReason (state giữ nguyên) }
+        '400': { description: REASON_REQUIRED }
+        '403': { description: FORBIDDEN }
+        '404': { description: VERSION_NOT_FOUND }
+        '409': { description: VERSION_STATE_INVALID | REVISION_CONFLICT | ALREADY_VOIDED }
+  /executions/{id}/reject:
+    post:
+      summary: D-21 — Từ chối xác nhận: mode=all trả cả lượt; mode=steps trả các bước DONE được chọn về làm lại.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, description: Bắt buộc }
+                mode:
+                  type: string
+                  enum: [all, steps]
+                  default: all
+                stepIds:
+                  type: array
+                  items: { type: string }
+                  description: Bắt buộc khi mode=steps; phải là bước DONE của lượt
+      responses:
+        '200':
+          description: >
+            Execution mới (state IN_PROGRESS) + 1 dòng execution_reviews
+            (step_ids=JSON khi mode=steps). Các bước bị trả: DONE -> PENDING,
+            giữ evidence, audit execution.step_redo từng bước.
+        '400': { description: REASON_REQUIRED | STEP_IDS_REQUIRED | INVALID_MODE }
+        '403': { description: FORBIDDEN (canApproveExecution) }
+        '404': { description: EXECUTION_NOT_FOUND | STEP_NOT_FOUND }
+        '409': { description: STEP_NOT_DONE }
+components:
+  schemas:
+    VersionState:
+      type: string
+      enum: [DRAFT, IN_REVIEW, APPROVED, ACTIVE, SUPERSEDED, RETIRED, SCHEDULED]
+    ExecutionReviewDto:
+      type: object
+      properties:
+        id: { type: string }
+        action: { type: string, enum: [submit, approve, reject, cancel_submit] }
+        actorId: { type: string }
+        actorName: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        stepIds:
+          type: array
+          nullable: true
+          items: { type: string }
+          description: D-21 — các bước bị trả (null = trả toàn bộ lượt)
+        createdAt: { type: string, format: date-time }
+    ExecutionStepDto:
+      type: object
+      properties:
+        redoCount:
+          type: integer
+          description: D-21 — số lần bước bị trả làm lại
+    ExecutionDto:
+      type: object
+      properties:
+        rejectedStepCount:
+          type: integer
+          description: >
+            D-21 — số bước của lần reject gần nhất (mode steps); 0 nếu review
+            gần nhất không phải reject hoặc là reject cả lượt.
