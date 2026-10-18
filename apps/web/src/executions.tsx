@@ -36,7 +36,8 @@ const SHIFT_LABEL: Record<ExecutionShift, string> = {
   TOI: 'Tối',
 };
 
-const EXEC_STATE_LABEL: Record<ExecutionState, string> = {  CREATED: 'Mới tạo',
+/** Nhãn trạng thái lượt — dùng chung với màn Báo cáo (T6). */
+export const EXEC_STATE_LABEL: Record<ExecutionState, string> = {  CREATED: 'Mới tạo',
   IN_PROGRESS: 'Đang thực hiện',
   PAUSED: 'Tạm dừng',
   BLOCKED: 'Bị chặn',
