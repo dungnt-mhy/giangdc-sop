@@ -49,6 +49,7 @@ interface VersionRow {
   impact_assessment: string | null;
   effective_from: string | null;
   created_by: string | null;
+  created_by_name: string | null;
   revision: number;
   created_at: string;
   updated_at: string;
@@ -144,6 +145,7 @@ export function toVersionDto(r: VersionRow): ProcessVersionDto {
     impactAssessment: r.impact_assessment,
     effectiveFrom: r.effective_from,
     createdBy: r.created_by,
+    createdByName: r.created_by_name ?? null,
     revision: r.revision,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -282,7 +284,7 @@ export async function findProcessByCode(db: D1Database, code: string): Promise<P
 
 export async function listVersions(db: D1Database, processId: string): Promise<ProcessVersionDto[]> {
   const rows = await db
-    .prepare('SELECT * FROM process_versions WHERE process_id = ?1 ORDER BY version_no DESC')
+    .prepare('SELECT v.*, u.display_name AS created_by_name FROM process_versions v LEFT JOIN users u ON u.id = v.created_by WHERE v.process_id = ?1 ORDER BY v.version_no DESC')
     .bind(processId)
     .all<VersionRow>();
   return (rows.results ?? []).map(toVersionDto);
@@ -290,7 +292,7 @@ export async function listVersions(db: D1Database, processId: string): Promise<P
 
 export async function findVersion(db: D1Database, id: string): Promise<ProcessVersionDto | null> {
   const row = await db
-    .prepare('SELECT * FROM process_versions WHERE id = ?1')
+    .prepare('SELECT v.*, u.display_name AS created_by_name FROM process_versions v LEFT JOIN users u ON u.id = v.created_by WHERE v.id = ?1')
     .bind(id)
     .first<VersionRow>();
   return row ? toVersionDto(row) : null;
