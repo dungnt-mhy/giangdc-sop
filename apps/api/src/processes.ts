@@ -314,6 +314,18 @@ processApp.post('/processes/:id/versions', requireAuth, requirePermission('proce
       return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy quy trình.', requestId) };
     }
     const versions = await listVersions(c.env.DB, process.id);
+    // Giới hạn: chỉ 1 bản Nháp/Chờ thẩm định tại 1 thời điểm.
+    const openVersion = versions.find((v) => v.state === 'DRAFT' || v.state === 'IN_REVIEW');
+    if (openVersion) {
+      return {
+        status: 409,
+        body: errorBody(
+          'DRAFT_VERSION_EXISTS',
+          `Đã có phiên bản ${openVersion.versionNo} ở trạng thái "${openVersion.state === 'DRAFT' ? 'Nháp' : 'Chờ thẩm định'}". Hoàn tất hoặc hủy phiên bản đó trước khi tạo mới.`,
+          requestId,
+        ),
+      };
+    }
     const latest = versions[0] ?? null;
     const versionId = newId();
     const stmts = [
