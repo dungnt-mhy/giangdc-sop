@@ -258,6 +258,8 @@ export function ExecutionsView({ perms, userId, isSeniorApprover }: {
 function EvidenceThumb({ evidence }: { evidence: EvidenceDto }) {
   const [url, setUrl] = React.useState<string | null>(null);
   React.useEffect(() => {
+    // T4: chỉ tải file cho PHOTO/FILE.
+    if (evidence.kind !== 'PHOTO' && evidence.kind !== 'FILE') return;
     let alive = true;
     let objUrl: string | null = null;
     fetch(`${API_BASE}${evidence.url}`, { credentials: 'include' })
@@ -273,7 +275,7 @@ function EvidenceThumb({ evidence }: { evidence: EvidenceDto }) {
       alive = false;
       if (objUrl) URL.revokeObjectURL(objUrl);
     };
-  }, [evidence.url]);
+  }, [evidence.url, evidence.kind]);
   if (evidence.kind === 'FILE') {
     return (
       <a
@@ -285,6 +287,32 @@ function EvidenceThumb({ evidence }: { evidence: EvidenceDto }) {
       >
         📎 {evidence.fileName}
       </a>
+    );
+  }
+  // T4: hiển thị bằng chứng nhập liệu (PRC-006).
+  if (['FIELD', 'FORM', 'CONFIRM', 'SCAN', 'NOTE'].includes(evidence.kind)) {
+    const kindIcon: Record<string, string> = {
+      FIELD: '📝', FORM: '📋', CONFIRM: '✅', SCAN: '🔍', NOTE: '💬',
+    };
+    const kindLabel: Record<string, string> = {
+      FIELD: 'Trường dữ liệu', FORM: 'Biểu mẫu', CONFIRM: 'Xác nhận', SCAN: 'Mã quét', NOTE: 'Ghi chú',
+    };
+    let displayValue = evidence.valueText ?? '';
+    if (evidence.kind === 'FORM') {
+      try {
+        const obj = JSON.parse(displayValue);
+        displayValue = Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join('\n');
+      } catch { /* giữ nguyên */ }
+    }
+    if (evidence.kind === 'CONFIRM') displayValue = 'Đã xác nhận';
+    return (
+      <div
+        className="ev-value-chip"
+        title={`${kindLabel[evidence.kind]} · ${evidence.uploadedByName ?? ''} · ${new Date(evidence.uploadedAt).toLocaleString('vi-VN')}`}
+      >
+        <span className="ev-value-kind">{kindIcon[evidence.kind]} {kindLabel[evidence.kind]}</span>
+        <span className="ev-value-text">{displayValue}</span>
+      </div>
     );
   }
   return (
@@ -428,6 +456,122 @@ function EvidenceUpload({
 }
 
 /* ---------------- Hướng dẫn chi tiết bước (D-17) ---------------- */
+
+/** T4: nhập bằng chứng phi tệp (FIELD/FORM/CONFIRM/SCAN/NOTE, PRC-006). */
+function ValueEvidenceInput({
+  executionId,
+  stepId,
+  requirements,
+  existingKinds,
+  onSaved,
+}: {
+  executionId: string;
+  stepId: string;
+  requirements: Array<{ kind: string; label: string; required: boolean }>;
+  existingKinds: Set<string>;
+  onSaved: () => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [values, setValues] = React.useState<Record<string, string>>({});
+  const [confirmed, setConfirmed] = React.useState<Record<string, boolean>>({});
+
+  const valueKinds = requirements.filter((r) =>
+    ['FIELD', 'FORM', 'CONFIRM', 'SCAN', 'NOTE'].includes(r.kind) && !existingKinds.has(r.kind),
+  );
+  if (valueKinds.length === 0) return null;
+
+  const save = async (kind: string, label: string) => {
+    let value: string;
+    if (kind === 'CONFIRM') {
+      if (!confirmed[kind + label]) { setError('Vui lòng tích xác nhận.'); return; }
+      value = `Đã xác nhận: ${label}`;
+    } else if (kind === 'FORM') {
+      const raw = (values[kind + label] ?? '').trim();
+      if (!raw) { setError('Vui lòng nhập biểu mẫu.'); return; }
+      // Chấp nhận "key: value" mỗi dòng → JSON.
+      try {
+        const obj: Record<string, string> = {};
+        for (const line of raw.split('\n')) {
+          const idx = line.indexOf(':');
+          if (idx > 0) obj[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        }
+        if (Object.keys(obj).length === 0) { setError('Biểu mẫu cần ít nhất 1 dòng "tên trường: giá trị".'); return; }
+        value = JSON.stringify(obj);
+      } catch { setError('Biểu mẫu không hợp lệ.'); return; }
+    } else {
+      value = (values[kind + label] ?? '').trim();
+      if (!value) { setError('Vui lòng nhập giá trị.'); return; }
+    }
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/executions/${executionId}/steps/${stepId}/evidence-value`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, label, value }),
+      });
+      setValues((p) => ({ ...p, [kind + label]: '' }));
+      setConfirmed((p) => ({ ...p, [kind + label]: false }));
+      onSaved();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const kindMeta: Record<string, { icon: string; title: string; placeholder: string }> = {
+    FIELD: { icon: '📝', title: 'Trường dữ liệu', placeholder: 'Nhập giá trị…' },
+    FORM: { icon: '📋', title: 'Biểu mẫu', placeholder: 'Mỗi dòng: tên trường: giá trị' },
+    CONFIRM: { icon: '✅', title: 'Xác nhận', placeholder: '' },
+    SCAN: { icon: '🔍', title: 'Mã quét', placeholder: 'Nhập/quét mã…' },
+    NOTE: { icon: '💬', title: 'Ghi chú', placeholder: 'Nhập ghi chú…' },
+  };
+
+  return (
+    <div className="ev-value-inputs">
+      {valueKinds.map((r) => {
+        const meta = kindMeta[r.kind];
+        const key = r.kind + r.label;
+        return (
+          <div key={key} className="ev-value-row">
+            <div className="ev-value-label">{meta.icon} {r.label} {r.required && <span className="req-star">*</span>}</div>
+            {r.kind === 'CONFIRM' ? (
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!!confirmed[key]}
+                  onChange={(e) => setConfirmed((p) => ({ ...p, [key]: e.target.checked }))}
+                />
+                Tôi xác nhận: {r.label}
+              </label>
+            ) : r.kind === 'NOTE' || r.kind === 'FORM' ? (
+              <textarea
+                className="input"
+                rows={r.kind === 'FORM' ? 3 : 2}
+                value={values[key] ?? ''}
+                onChange={(e) => setValues((p) => ({ ...p, [key]: e.target.value }))}
+                placeholder={meta.placeholder}
+              />
+            ) : (
+              <input
+                className="input"
+                value={values[key] ?? ''}
+                onChange={(e) => setValues((p) => ({ ...p, [key]: e.target.value }))}
+                placeholder={meta.placeholder}
+              />
+            )}
+            <button type="button" className="btn-small primary" disabled={busy} onClick={() => save(r.kind, r.label)}>
+              {busy ? 'Đang lưu…' : 'Lưu'}
+            </button>
+          </div>
+        );
+      })}
+      {error && <div className="form-error">{error}</div>}
+    </div>
+  );
+}
 
 /** Các trường hướng dẫn từ quy trình, kèm nhãn tiếng Việt. */
 const GUIDE_FIELDS: Array<{ key: keyof ProcessStepDto; label: string }> = [
@@ -658,6 +802,15 @@ function StepWorkCard({
           )}
           {showCompleteRow && needsPhoto && (
             <p className="sec-desc warn-text">⚠ Bước này yêu cầu ảnh chụp (PRC-006) — phải tải ảnh lên trước khi hoàn thành.</p>
+          )}
+          {canUpload && (
+            <ValueEvidenceInput
+              executionId={executionId}
+              stepId={step.id}
+              requirements={step.completion ?? []}
+              existingKinds={new Set(step.evidence.map((e) => e.kind))}
+              onSaved={onChanged}
+            />
           )}
           {canUpload && (
             <p className="sec-desc muted">Ảnh được nén trước khi tải lên (tối đa 5MB). Tệp: PDF, Word, Excel, tối đa 5MB.</p>
