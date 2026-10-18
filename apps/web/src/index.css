@@ -1752,3 +1752,56 @@ img.logo-img {
   color: #c92a2a;
   border: 1px solid #ffc9c9;
 }
+
+/* ---------- D-15: thông báo + badge ---------- */
+.notif-wrap { position: relative; display: inline-flex; }
+.notif-bell {
+  position: relative;
+  background: none; border: none; cursor: pointer;
+  font-size: 1.25rem; line-height: 1; padding: 0.35rem;
+  border-radius: 8px;
+}
+.notif-bell:hover { background: rgba(0,0,0,0.06); }
+.notif-badge {
+  position: absolute; top: -2px; right: -2px;
+  min-width: 18px; height: 18px; padding: 0 4px;
+  background: #e03131; color: #fff; font-size: 0.68rem; font-weight: 700;
+  border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+}
+.notif-backdrop { position: fixed; inset: 0; z-index: 60; }
+.notif-panel {
+  position: absolute; z-index: 61; top: calc(100% + 8px); right: 0;
+  width: min(340px, 86vw); max-height: 60vh; overflow-y: auto;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(2, 32, 71, 0.18);
+}
+.notif-head { font-weight: 700; padding: 0.7rem 0.9rem; border-bottom: 1px solid #eef2f7; }
+.notif-empty { padding: 1rem; color: #64748b; font-size: 0.85rem; text-align: center; }
+.notif-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: none; border-bottom: 1px solid #f1f5f9;
+  padding: 0.65rem 0.9rem; cursor: pointer; position: relative;
+}
+.notif-item:hover { background: #f8fafc; }
+.notif-item.unread { background: #f0f6ff; }
+.notif-dot {
+  position: absolute; left: 0.35rem; top: 1rem;
+  width: 8px; height: 8px; border-radius: 50%; background: #1d4ed8;
+}
+.notif-title { font-weight: 600; font-size: 0.88rem; padding-left: 0.6rem; }
+.notif-body { font-size: 0.8rem; color: #475569; padding-left: 0.6rem; margin-top: 0.15rem; }
+.notif-time { font-size: 0.72rem; color: #94a3b8; padding-left: 0.6rem; margin-top: 0.2rem; }
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  background: #e03131; color: #fff; font-size: 0.7rem; font-weight: 700;
+  border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+}
+
+/* ---------- D-15: nút bằng chứng ---------- */
+.ev-btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+.ev-file-name {
+  padding: 0.6rem 0.75rem; background: #f8fafc;
+  border: 1px dashed #cbd5e1; border-radius: 8px;
+  font-size: 0.85rem; word-break: break-all;
+}
