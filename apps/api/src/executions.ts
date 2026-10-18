@@ -45,6 +45,7 @@ import {
   toEvidenceDto,
   toExecutionDto,
   toExecutionStepDto,
+  type EvidenceRow,
   type ListExecutionsFilter,
 } from './executionDb.js';
 import { buildCsv, computeKpiReport, fetchExportRows, toExportRow } from './reports.js';
@@ -1236,6 +1237,122 @@ executionApp.get('/executions/:id/exceptions', requireAuth, requirePermission('e
   if (!scopeCheck.ok) return scopeCheck.response;
   const list = await listExceptionDtos(c.env.DB, execRow.id);
   return c.json({ exceptions: list });
+});
+
+/** GET /exceptions — thống kê ngoại lệ toàn cục (lọc theo status, severity, from, to). */
+executionApp.get('/exceptions', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
+  const requestId = c.get('requestId') as string;
+  const session = c.get('session') as AuthSession;
+  const permissions = new Set((c.get('permissions') ?? []) as string[]);
+  const scopes = await getUserScopes(c.env.DB, session.user_id);
+  const orgUnitIds = permissions.has('scope.manage') ? null : scopes;
+
+  const status = c.req.query('status') || undefined;
+  const severity = c.req.query('severity') || undefined;
+  const from = c.req.query('from') || undefined;
+  const to = c.req.query('to') || undefined;
+
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  if (orgUnitIds) {
+    conds.push(`e.org_unit_id IN (${orgUnitIds.map(() => '?').join(',')})`);
+    params.push(...orgUnitIds);
+  }
+  if (status) { conds.push(`x.status = ?`); params.push(status); }
+  if (severity) { conds.push(`x.severity = ?`); params.push(severity); }
+  if (from) { conds.push(`x.created_at >= ?`); params.push(from); }
+  if (to) { conds.push(`x.created_at <= ?`); params.push(to); }
+  const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+
+  // Danh sách.
+  const rows = await c.env.DB.prepare(
+    `SELECT x.id FROM exceptions x
+     JOIN executions e ON e.id = x.execution_id
+     ${where}
+     ORDER BY x.created_at DESC LIMIT 200`,
+  ).bind(...params).all<{ id: string }>();
+  const items: ExceptionDto[] = [];
+  for (const r of rows.results ?? []) {
+    const dto = await findExceptionDto(c.env.DB, r.id);
+    if (dto) {
+      // Bổ sung mã lượt để hiển thị.
+      const exRow = await findExecution(c.env.DB, dto.executionId);
+      items.push({ ...dto, executionCode: exRow?.code ?? '' } as ExceptionDto & { executionCode: string });
+    }
+  }
+  // Thống kê.
+  const stats = await c.env.DB.prepare(
+    `SELECT x.status, x.severity, COUNT(*) as c FROM exceptions x
+     JOIN executions e ON e.id = x.execution_id
+     ${where}
+     GROUP BY x.status, x.severity`,
+  ).bind(...params).all<{ status: string; severity: string; c: number }>();
+  const byStatus: Record<string, number> = {};
+  const bySeverity: Record<string, number> = {};
+  let total = 0;
+  for (const s of stats.results ?? []) {
+    byStatus[s.status] = (byStatus[s.status] ?? 0) + s.c;
+    bySeverity[s.severity] = (bySeverity[s.severity] ?? 0) + s.c;
+    total += s.c;
+  }
+  return c.json({ items, stats: { total, byStatus, bySeverity }, requestId });
+});
+
+/** GET /evidence — thống kê bằng chứng toàn cục (lọc theo kind, from, to). */
+executionApp.get('/evidence', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
+  const requestId = c.get('requestId') as string;
+  const session = c.get('session') as AuthSession;
+  const permissions = new Set((c.get('permissions') ?? []) as string[]);
+  const scopes = await getUserScopes(c.env.DB, session.user_id);
+  const orgUnitIds = permissions.has('scope.manage') ? null : scopes;
+
+  const kind = c.req.query('kind') || undefined;
+  const from = c.req.query('from') || undefined;
+  const to = c.req.query('to') || undefined;
+
+  const conds: string[] = [];
+  const params: unknown[] = [];
+  if (orgUnitIds) {
+    conds.push(`e.org_unit_id IN (${orgUnitIds.map(() => '?').join(',')})`);
+    params.push(...orgUnitIds);
+  }
+  if (kind) { conds.push(`ev.kind = ?`); params.push(kind); }
+  if (from) { conds.push(`ev.uploaded_at >= ?`); params.push(from); }
+  if (to) { conds.push(`ev.uploaded_at <= ?`); params.push(to); }
+  const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
+
+  const rows = await c.env.DB.prepare(
+    `SELECT ev.id, ev.execution_id, ev.execution_step_id, ev.kind, ev.r2_key, ev.file_name,
+            ev.mime_type, ev.size_bytes, ev.value_text, ev.uploaded_by, ev.uploaded_at,
+            u.display_name AS uploaded_by_name, e.code AS execution_code, es.step_code, es.title AS step_title
+     FROM evidence ev
+     JOIN executions e ON e.id = ev.execution_id
+     JOIN execution_steps es ON es.id = ev.execution_step_id
+     LEFT JOIN users u ON u.id = ev.uploaded_by
+     ${where}
+     ORDER BY ev.uploaded_at DESC LIMIT 200`,
+  ).bind(...params).all<EvidenceRow & { execution_code: string; step_code: string; step_title: string }>();
+
+  const items = (rows.results ?? []).map((r) => ({
+    ...toEvidenceDto(r),
+    executionCode: r.execution_code,
+    stepCode: r.step_code,
+    stepTitle: r.step_title,
+  }));
+
+  const stats = await c.env.DB.prepare(
+    `SELECT ev.kind, COUNT(*) as c FROM evidence ev
+     JOIN executions e ON e.id = ev.execution_id
+     ${where}
+     GROUP BY ev.kind`,
+  ).bind(...params).all<{ kind: string; c: number }>();
+  const byKind: Record<string, number> = {};
+  let total = 0;
+  for (const s of stats.results ?? []) {
+    byKind[s.kind] = s.c;
+    total += s.c;
+  }
+  return c.json({ items, stats: { total, byKind }, requestId });
 });
 
 /** POST /exceptions/:id/handle — giám sát xử lý: làm lại / tiếp tục có điều kiện / hủy / leo thang (EXP-003, EXP-004). */
