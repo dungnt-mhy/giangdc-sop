@@ -86,6 +86,7 @@ interface EvidenceRow {
   file_name: string;
   mime_type: string;
   size_bytes: number;
+  value_text: string | null;
   uploaded_by: string;
   uploaded_by_name: string | null;
   uploaded_at: string;
@@ -284,7 +285,7 @@ export async function listEvidenceForSteps(
   const rows = await db
     .prepare(
       `SELECT ev.id, ev.execution_id, ev.execution_step_id, ev.kind, ev.r2_key, ev.file_name,
-              ev.mime_type, ev.size_bytes, ev.uploaded_by, ev.uploaded_at,
+              ev.mime_type, ev.size_bytes, ev.value_text, ev.uploaded_by, ev.uploaded_at,
               u.display_name AS uploaded_by_name
        FROM evidence ev LEFT JOIN users u ON u.id = ev.uploaded_by
        WHERE ev.execution_step_id IN (${ph}) ORDER BY ev.uploaded_at ASC`,
@@ -298,7 +299,7 @@ export async function findEvidence(db: D1Database, id: string): Promise<Evidence
   return db
     .prepare(
       `SELECT ev.id, ev.execution_id, ev.execution_step_id, ev.kind, ev.r2_key, ev.file_name,
-              ev.mime_type, ev.size_bytes, ev.uploaded_by, ev.uploaded_at,
+              ev.mime_type, ev.size_bytes, ev.value_text, ev.uploaded_by, ev.uploaded_at,
               u.display_name AS uploaded_by_name
        FROM evidence ev LEFT JOIN users u ON u.id = ev.uploaded_by
        WHERE ev.id = ?1`,
@@ -363,6 +364,7 @@ export function toEvidenceDto(r: EvidenceRow): EvidenceDto {
     fileName: r.file_name,
     mimeType: r.mime_type,
     sizeBytes: r.size_bytes,
+    valueText: r.value_text ?? null,
     uploadedBy: r.uploaded_by,
     uploadedByName: r.uploaded_by_name,
     uploadedAt: r.uploaded_at,
