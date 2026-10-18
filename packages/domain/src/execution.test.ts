@@ -89,13 +89,21 @@ describe('Execution step lifecycle (T3, D-12)', () => {
 });
 
 describe('D-14: normalizeExecutionCreate', () => {
+  it('thiếu tiêu đề -> lỗi TITLE_REQUIRED', () => {
+    for (const body of [{}, { title: '' }, { title: '   ' }]) {
+      const r = normalizeExecutionCreate(body, 'user-1', '2026-10-18');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('TITLE_REQUIRED');
+    }
+  });
+
   it('default: ngày = hôm nay, người tạo = người gọi', () => {
-    const r = normalizeExecutionCreate({}, 'user-1', '2026-10-18');
+    const r = normalizeExecutionCreate({ title: 'Xuất hàng' }, 'user-1', '2026-10-18');
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.value.executionDate).toBe('2026-10-18');
       expect(r.value.createdBy).toBe('user-1');
-      expect(r.value.title).toBeNull();
+      expect(r.value.title).toBe('Xuất hàng');
       expect(r.value.executionTime).toBeNull();
       expect(r.value.shift).toBeNull();
       expect(r.value.mainPerformerId).toBeNull();
@@ -129,15 +137,15 @@ describe('D-14: normalizeExecutionCreate', () => {
     }
   });
 
-  it('chuỗi rỗng -> null (dùng default)', () => {
+  it('chuỗi rỗng -> null (dùng default), trừ tiêu đề', () => {
     const r = normalizeExecutionCreate(
-      { title: '   ', executionDate: '', shift: '', createdBy: '' },
+      { title: 'Lượt sáng', executionDate: '', shift: '', createdBy: '' },
       'user-1',
       '2026-10-18',
     );
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.value.title).toBeNull();
+      expect(r.value.title).toBe('Lượt sáng');
       expect(r.value.executionDate).toBe('2026-10-18');
       expect(r.value.shift).toBeNull();
       expect(r.value.createdBy).toBe('user-1');
@@ -145,24 +153,24 @@ describe('D-14: normalizeExecutionCreate', () => {
   });
 
   it('ngày sai định dạng -> INVALID_EXECUTION_DATE', () => {
-    const r = normalizeExecutionCreate({ executionDate: '18/10/2026' }, 'user-1', '2026-10-18');
+    const r = normalizeExecutionCreate({ title: 'T', executionDate: '18/10/2026' }, 'user-1', '2026-10-18');
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe('INVALID_EXECUTION_DATE');
   });
 
   it('giờ sai định dạng -> INVALID_EXECUTION_TIME', () => {
     for (const bad of ['8:30', '25:00', '08-30', '0830']) {
-      const r = normalizeExecutionCreate({ executionTime: bad }, 'user-1', '2026-10-18');
+      const r = normalizeExecutionCreate({ title: 'T', executionTime: bad }, 'user-1', '2026-10-18');
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.code).toBe('INVALID_EXECUTION_TIME');
     }
   });
 
   it('ca sai -> INVALID_SHIFT; chữ thường vẫn nhận', () => {
-    const bad = normalizeExecutionCreate({ shift: 'DEM' }, 'user-1', '2026-10-18');
+    const bad = normalizeExecutionCreate({ title: 'T', shift: 'DEM' }, 'user-1', '2026-10-18');
     expect(bad.ok).toBe(false);
     if (!bad.ok) expect(bad.code).toBe('INVALID_SHIFT');
-    const lower = normalizeExecutionCreate({ shift: 'chieu' }, 'user-1', '2026-10-18');
+    const lower = normalizeExecutionCreate({ title: 'T', shift: 'chieu' }, 'user-1', '2026-10-18');
     expect(lower.ok).toBe(true);
     if (lower.ok) expect(lower.value.shift).toBe('CHIEU');
   });
