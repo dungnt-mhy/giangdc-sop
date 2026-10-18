@@ -18,6 +18,8 @@ import type {
   AssignStepBody,
   CreateExecutionBody,
   ExecutionDto,
+  ExecutionState,
+  RejectApprovalBody,
 } from '@giangdc-sop/contracts';
 import {
   findActiveUser,
@@ -36,6 +38,15 @@ import {
 } from './executionDb.js';
 import { findProcess, findVersion as findVersionDb, getVersionSteps } from './processDb.js';
 import { getUserScopes, writeAudit } from './db.js';
+import {
+  countPendingApprovalsFor,
+  countUnreadNotifications,
+  createNotification,
+  listNotifications,
+  listSeniorApproverIds,
+  markNotificationRead,
+  toNotificationDto,
+} from './notifications.js';
 import { errorBody, requireAuth, requirePermission } from './middleware.js';
 import { withIdempotency } from './processes.js';
 import type { AppEnv, AuthSession } from './env.js';
@@ -347,6 +358,15 @@ executionApp.post(
         objectType: 'execution_step', objectId: step.id,
         reason: `${row.code}/${step.step_code} → ${body.performerUserId}`, requestId,
       });
+      // D-15: thông báo 2 chiều — báo cho người được phân công (trừ khi tự gán cho mình).
+      if (body.performerUserId !== session.user_id) {
+        await createNotification(
+          db, body.performerUserId, 'step.assigned',
+          `Bạn được phân công bước ${step.step_code} — ${step.title}`,
+          `Lượt ${row.code}`,
+          'execution', row.id,
+        );
+      }
       const updated = await findExecutionStep(db, row.id, step.id);
       const evRows = updated ? await listEvidenceForSteps(db, [updated.id]) : [];
       return {
@@ -377,9 +397,43 @@ executionApp.get('/executions', requireAuth, requirePermission('execution.view' 
   return c.json({ items, requestId });
 });
 
+/** GET /executions/pending-approval-count — số lượt chờ duyệt mà tôi được duyệt (D-15, badge menu). */
+executionApp.get(
+  '/executions/pending-approval-count',
+  requireAuth,
+  requirePermission('execution.view' as Permission),
+  async (c) => {
+    const session = c.get('session') as AuthSession;
+    const senior = (c.get('seniorApprover') as boolean) === true;
+    const count = await countPendingApprovalsFor(c.env.DB, session.user_id, senior);
+    return c.json({ count });
+  },
+);
+
+/** GET /notifications — thông báo của tôi (D-15, chưa đọc trước). */
+executionApp.get('/notifications', requireAuth, async (c) => {
+  const session = c.get('session') as AuthSession;
+  const limit = Math.min(Math.max(parseInt(c.req.query('limit') ?? '50', 10) || 50, 1), 200);
+  const rows = await listNotifications(c.env.DB, session.user_id, limit);
+  return c.json({ items: rows.map(toNotificationDto) });
+});
+
+/** GET /notifications/unread-count — số thông báo chưa đọc (D-15, badge chuông). */
+executionApp.get('/notifications/unread-count', requireAuth, async (c) => {
+  const session = c.get('session') as AuthSession;
+  const count = await countUnreadNotifications(c.env.DB, session.user_id);
+  return c.json({ count });
+});
+
+/** POST /notifications/:id/read — đánh dấu đã đọc (D-15). */
+executionApp.post('/notifications/:id/read', requireAuth, async (c) => {
+  const session = c.get('session') as AuthSession;
+  const ok = await markNotificationRead(c.env.DB, session.user_id, c.req.param('id'));
+  return c.json({ ok });
+});
+
 /** GET /executions/:id — chi tiết kèm bước + bằng chứng. */
-executionApp.get('/executions/:id', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
-  const requestId = c.get('requestId') as string;
+executionApp.get('/executions/:id', requireAuth, requirePermission('execution.view' as Permission), async (c) => {  const requestId = c.get('requestId') as string;
   const row = await findExecution(c.env.DB, c.req.param('id'));
   if (!row) {
     return c.json(errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId), 404);
@@ -554,20 +608,291 @@ executionApp.post('/executions/:id/cancel', requireAuth, requirePermission('exec
   return c.json({ execution: await toExecutionDto(c.env.DB, (await findExecution(c.env.DB, row.id))!) });
 });
 
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+/* ---------- Chuyển trạng thái lượt + duyệt (D-15) ---------- */
+
+type ExecutionRowLite = { id: string; code: string; state: string };
+
+/**
+ * Chuyển trạng thái lượt: kiểm tra canTransition (domain), UPDATE state,
+ * ghi audit, trả DTO mới. Dùng trong withIdempotency.
+ */
+async function doTransition(
+  db: D1Database,
+  row: ExecutionRowLite,
+  session: AuthSession,
+  requestId: string,
+  to: 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'PENDING_APPROVAL' | 'APPROVED',
+  auditAction: string,
+  extra?: { setSql: string; binds: unknown[] },
+): Promise<{ status: number; body: unknown }> {
+  if (!canTransition(row.state as ExecutionState, to)) {
+    return {
+      status: 409,
+      body: errorBody(
+        'EXECUTION_STATE_INVALID',
+        `Lượt ở trạng thái ${row.state}, không thể chuyển sang ${to}.`,
+        requestId,
+      ),
+    };
+  }
+  const now = new Date().toISOString();
+  let sql = 'UPDATE executions SET state = ?1, updated_at = ?2';
+  const binds: unknown[] = [to, now];
+  if (extra) {
+    sql += `, ${extra.setSql}`;
+    binds.push(...extra.binds);
+  }
+  sql += ` WHERE id = ?${binds.length + 1}`;
+  binds.push(row.id);
+  await db.prepare(sql).bind(...binds).run();
+  await writeAudit(db, {
+    id: newId(), actorId: session.user_id, action: auditAction,
+    objectType: 'execution', objectId: row.id,
+    reason: `${row.code}: ${row.state} -> ${to}`, requestId,
+  });
+  const updated = await findExecution(db, row.id);
+  return { status: 200, body: { execution: updated ? await toExecutionDto(db, updated) : null } };
+}
+
+/** Nạp lượt + kiểm tra scope; trả { row } hoặc { status, body } lỗi. */
+async function loadExecutionForTransition(
+  c: {
+    env: { DB: D1Database };
+    get(key: string): unknown;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    json(body: any, status?: number): Response;
+    req: { param(name: string): string };
+  },
+  requestId: string,
+): Promise<
+  | { row: ExecutionRowLite & { org_unit_id: string | null; supervisor_id: string | null; created_by: string; approval_requested_by: string | null } }
+  | { status: number; body: unknown }
+> {
+  const db = c.env.DB;
+  const row = await findExecution(db, c.req.param('id'));
+  if (!row) {
+    return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId) };
+  }
+  const scopeCheck = await checkExecutionScope(c, row.org_unit_id, row.id);
+  if (!scopeCheck.ok) return { status: 403, body: scopeCheck.response };
+  return { row };
+}
+
+/** POST /executions/:id/start — bắt đầu lượt (CREATED -> IN_PROGRESS). */
+executionApp.post(
+  '/executions/:id/start',
+  requireAuth,
+  requirePermission('execution.operate' as Permission),
+  async (c) => {
+    return withIdempotency(c, 'execution.start', {}, async () => {
+      const requestId = c.get('requestId') as string;
+      const session = c.get('session') as AuthSession;
+      const loaded = await loadExecutionForTransition(c, requestId);
+      if ('status' in loaded) return loaded;
+      return doTransition(c.env.DB, loaded.row, session, requestId, 'IN_PROGRESS', 'execution.start');
+    });
+  },
+);
+
+/** POST /executions/:id/pause — tạm dừng lượt (IN_PROGRESS -> PAUSED). */
+executionApp.post(
+  '/executions/:id/pause',
+  requireAuth,
+  requirePermission('execution.operate' as Permission),
+  async (c) => {
+    return withIdempotency(c, 'execution.pause', {}, async () => {
+      const requestId = c.get('requestId') as string;
+      const session = c.get('session') as AuthSession;
+      const loaded = await loadExecutionForTransition(c, requestId);
+      if ('status' in loaded) return loaded;
+      return doTransition(c.env.DB, loaded.row, session, requestId, 'PAUSED', 'execution.pause');
+    });
+  },
+);
+
+/** POST /executions/:id/resume — tiếp tục lượt (PAUSED -> IN_PROGRESS). */
+executionApp.post(
+  '/executions/:id/resume',
+  requireAuth,
+  requirePermission('execution.operate' as Permission),
+  async (c) => {
+    return withIdempotency(c, 'execution.resume', {}, async () => {
+      const requestId = c.get('requestId') as string;
+      const session = c.get('session') as AuthSession;
+      const loaded = await loadExecutionForTransition(c, requestId);
+      if ('status' in loaded) return loaded;
+      return doTransition(c.env.DB, loaded.row, session, requestId, 'IN_PROGRESS', 'execution.resume');
+    });
+  },
+);
+
+/** POST /executions/:id/submit — gửi duyệt (COMPLETED -> PENDING_APPROVAL). */
+executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
+  return withIdempotency(c, 'execution.submit', {}, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const permissions = new Set((c.get('permissions') ?? []) as string[]);
+    const loaded = await loadExecutionForTransition(c, requestId);
+    if ('status' in loaded) return loaded;
+    const { row } = loaded;
+    // Quyền: người tạo lượt hoặc có execution.operate.
+    if (row.created_by !== session.user_id && !permissions.has('execution.operate')) {
+      return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người tạo lượt mới được gửi duyệt.', requestId) };
+    }
+    const now = new Date().toISOString();
+    const res = await doTransition(c.env.DB, row, session, requestId, 'PENDING_APPROVAL', 'execution.submit', {
+      setSql: 'approval_requested_by = ?3, approval_requested_at = ?4, approval_note = NULL',
+      binds: [session.user_id, now],
+    });
+    if (res.status === 200) {
+      // D-15: thông báo 2 chiều — báo cho người duyệt (supervisor; không có -> senior).
+      const approverIds = row.supervisor_id
+        ? [row.supervisor_id]
+        : await listSeniorApproverIds(c.env.DB);
+      for (const uid of approverIds) {
+        if (uid === session.user_id) continue;
+        await createNotification(
+          c.env.DB, uid, 'execution.submitted',
+          `Lượt ${row.code} đã được gửi duyệt`,
+          `Người gửi: ${session.display_name ?? session.username}`,
+          'execution', row.id,
+        );
+      }
+    }
+    return res;
+  });
+});
+
+/** POST /executions/:id/cancel-submit — hủy gửi duyệt (PENDING_APPROVAL -> COMPLETED). */
+executionApp.post('/executions/:id/cancel-submit', requireAuth, async (c) => {
+  return withIdempotency(c, 'execution.cancel-submit', {}, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const senior = (c.get('seniorApprover') as boolean) === true;
+    const loaded = await loadExecutionForTransition(c, requestId);
+    if ('status' in loaded) return loaded;
+    const { row } = loaded;
+    // Chỉ người đã gửi hoặc senior được hủy.
+    if (row.approval_requested_by !== session.user_id && !senior) {
+      return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người đã gửi duyệt mới được hủy.', requestId) };
+    }
+    return doTransition(c.env.DB, row, session, requestId, 'COMPLETED', 'execution.cancel-submit', {
+      setSql: 'approval_requested_by = NULL, approval_requested_at = NULL, approval_note = NULL',
+      binds: [],
+    });
+  });
+});
+
+/**
+ * Kiểm tra quyền duyệt lượt (D-15): là supervisor của lượt,
+ * hoặc có vai trò senior_approver (D-10).
+ */
+function canApproveExecution(
+  c: { get(key: string): unknown },
+  row: { supervisor_id: string | null },
+  sessionUserId: string,
+): boolean {
+  if (row.supervisor_id && row.supervisor_id === sessionUserId) return true;
+  return (c.get('seniorApprover') as boolean) === true;
+}
+
+/** POST /executions/:id/approve — duyệt lượt (PENDING_APPROVAL -> APPROVED). */
+executionApp.post('/executions/:id/approve', requireAuth, async (c) => {
+  return withIdempotency(c, 'execution.approve', {}, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const loaded = await loadExecutionForTransition(c, requestId);
+    if ('status' in loaded) return loaded;
+    const { row } = loaded;
+    if (!canApproveExecution(c, row, session.user_id)) {
+      return { status: 403, body: errorBody('FORBIDDEN', 'Bạn không có quyền duyệt lượt này.', requestId) };
+    }
+    const now = new Date().toISOString();
+    const res = await doTransition(c.env.DB, row, session, requestId, 'APPROVED', 'execution.approve', {
+      setSql: 'approved_by = ?3, approved_at = ?4',
+      binds: [session.user_id, now],
+    });
+    if (res.status === 200) {
+      // D-15: báo cho người đã gửi duyệt (fallback người tạo).
+      const target = row.approval_requested_by ?? row.created_by;
+      if (target !== session.user_id) {
+        await createNotification(
+          c.env.DB, target, 'execution.approved',
+          `Lượt ${row.code} đã được duyệt`,
+          `Người duyệt: ${session.display_name ?? session.username}`,
+          'execution', row.id,
+        );
+      }
+    }
+    return res;
+  });
+});
+
+/** POST /executions/:id/reject — từ chối duyệt (PENDING_APPROVAL -> COMPLETED, lý do bắt buộc). */
+executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
+  const body = await parseJson<RejectApprovalBody>(c);
+  return withIdempotency(c, 'execution.reject', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const loaded = await loadExecutionForTransition(c, requestId);
+    if ('status' in loaded) return loaded;
+    const { row } = loaded;
+    if (!canApproveExecution(c, row, session.user_id)) {
+      return { status: 403, body: errorBody('FORBIDDEN', 'Bạn không có quyền duyệt lượt này.', requestId) };
+    }
+    const reason = (body?.reason ?? '').trim();
+    if (!reason) {
+      return { status: 400, body: errorBody('REASON_REQUIRED', 'Từ chối duyệt phải ghi rõ lý do.', requestId) };
+    }
+    const now = new Date().toISOString();
+    const res = await doTransition(c.env.DB, row, session, requestId, 'COMPLETED', 'execution.reject', {
+      setSql: 'approved_by = ?3, approved_at = ?4, approval_note = ?5',
+      binds: [session.user_id, now, reason],
+    });
+    if (res.status === 200) {
+      // D-15: báo cho người đã gửi duyệt (fallback người tạo).
+      const target = row.approval_requested_by ?? row.created_by;
+      if (target !== session.user_id) {
+        await createNotification(
+          c.env.DB, target, 'execution.rejected',
+          `Lượt ${row.code} bị từ chối duyệt`,
+          `Lý do: ${reason}`,
+          'execution', row.id,
+        );
+      }
+    }
+    return res;
+  });
+});
+
+const MAX_EVIDENCE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+/** D-15: MIME tài liệu cho kind=FILE (PDF/Word/Excel). */
+const ALLOWED_DOC_MIME = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+]);
 
 function extForMime(mime: string): string {
   if (mime === 'image/png') return 'png';
   if (mime === 'image/webp') return 'webp';
   if (mime === 'image/heic') return 'heic';
   if (mime === 'image/heif') return 'heif';
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'application/msword') return 'doc';
+  if (mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') return 'docx';
+  if (mime === 'application/vnd.ms-excel') return 'xls';
+  if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx';
   return 'jpg';
 }
 
 /**
- * POST /executions/:id/steps/:stepId/evidence — upload ảnh bằng chứng (D-12).
- * multipart/form-data: photo=<file>, kind?=PHOTO|FILE. Lưu R2, giới hạn 10MB.
+ * POST /executions/:id/steps/:stepId/evidence — upload bằng chứng (D-12, D-15).
+ * multipart/form-data: photo=<file>, kind?=PHOTO|FILE. Lưu R2, giới hạn 5MB.
+ * PHOTO: ảnh (nên nén phía client trước); FILE: PDF/Word/Excel.
  */
 executionApp.post(
   '/executions/:id/steps/:stepId/evidence',
@@ -598,14 +923,16 @@ executionApp.post(
     if (!['PHOTO', 'FILE'].includes(kind)) {
       return c.json(errorBody('INVALID_REQUEST', 'Loại bằng chứng chỉ nhận PHOTO hoặc FILE.', requestId), 400);
     }
-    if (!ALLOWED_IMAGE_MIME.has(file.type)) {
-      return c.json(errorBody('INVALID_MIME', `Định dạng ảnh không hỗ trợ: ${file.type || 'không rõ'}.`, requestId), 400);
+    // D-15: PHOTO chỉ nhận ảnh; FILE nhận tài liệu PDF/Word/Excel.
+    const allowed = kind === 'PHOTO' ? ALLOWED_IMAGE_MIME : ALLOWED_DOC_MIME;
+    if (!allowed.has(file.type)) {
+      return c.json(errorBody('INVALID_MIME', `Định dạng file không hỗ trợ: ${file.type || 'không rõ'}.`, requestId), 400);
     }
-    if (file.size > MAX_PHOTO_BYTES) {
-      return c.json(errorBody('FILE_TOO_LARGE', 'Ảnh vượt quá 10MB.', requestId), 400);
+    if (file.size > MAX_EVIDENCE_BYTES) {
+      return c.json(errorBody('FILE_TOO_LARGE', 'File vượt quá 5MB.', requestId), 400);
     }
     if (file.size === 0) {
-      return c.json(errorBody('INVALID_REQUEST', 'File ảnh rỗng.', requestId), 400);
+      return c.json(errorBody('INVALID_REQUEST', 'File rỗng.', requestId), 400);
     }
     const evidenceId = newId();
     const key = `evidence/${row.id}/${step.id}/${evidenceId}.${extForMime(file.type)}`;
