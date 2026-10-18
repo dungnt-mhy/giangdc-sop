@@ -14,6 +14,7 @@ import type {
   ExecutionStepState,
   PositionDto,
   ProcessDto,
+  ProcessStepDto,
   ProcessVersionDto,
 } from '@giangdc-sop/contracts';
 import { api, API_BASE } from './App.js';
@@ -235,6 +236,19 @@ function EvidenceThumb({ evidence }: { evidence: EvidenceDto }) {
       if (objUrl) URL.revokeObjectURL(objUrl);
     };
   }, [evidence.url]);
+  if (evidence.kind === 'FILE') {
+    return (
+      <a
+        className="ev-file-chip"
+        href={url ?? undefined}
+        target="_blank"
+        rel="noreferrer"
+        title={`${evidence.fileName} · ${evidence.uploadedByName ?? ''} · ${new Date(evidence.uploadedAt).toLocaleString('vi-VN')}`}
+      >
+        📎 {evidence.fileName}
+      </a>
+    );
+  }
   return (
     <a
       className="ev-thumb"
@@ -375,6 +389,47 @@ function EvidenceUpload({
   );
 }
 
+/* ---------------- Hướng dẫn chi tiết bước (D-17) ---------------- */
+
+/** Các trường hướng dẫn từ quy trình, kèm nhãn tiếng Việt. */
+const GUIDE_FIELDS: Array<{ key: keyof ProcessStepDto; label: string }> = [
+  { key: 'prerequisites', label: 'Điều kiện tiên quyết' },
+  { key: 'inputs', label: 'Đầu vào' },
+  { key: 'instructions', label: 'Hướng dẫn thực hiện' },
+  { key: 'expectedResult', label: 'Kết quả mong đợi' },
+  { key: 'outputs', label: 'Đầu ra' },
+  { key: 'notes', label: 'Ghi chú' },
+  { key: 'warnings', label: '⚠ Cảnh báo' },
+];
+
+function StepGuide({ guide, open, onToggle }: {
+  guide: ProcessStepDto;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const items = GUIDE_FIELDS
+    .map(({ key, label }) => ({ label, text: (guide[key] as string | null)?.trim() }))
+    .filter((i) => !!i.text);
+  if (items.length === 0) return null;
+  return (
+    <div className="step-guide">
+      <button type="button" className="guide-toggle" onClick={onToggle} aria-expanded={open}>
+        📖 Xem hướng dẫn chi tiết {open ? '▾' : '▸'}
+      </button>
+      {open && (
+        <div className="guide-panel">
+          {items.map((i) => (
+            <div key={i.label} className="guide-item">
+              <div className="guide-label">{i.label}</div>
+              <div className="guide-text">{i.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StepWorkCard({
   step,
   executionId,
@@ -384,6 +439,7 @@ function StepWorkCard({
   positions,
   req,
   blockedByOrder,
+  guide,
   onChanged,
 }: {
   step: ExecutionStepDto;
@@ -395,11 +451,14 @@ function StepWorkCard({
   req: StepPositionReq | undefined;
   /** D-16: true khi còn bước trước chưa DONE (bước làm tuần tự). */
   blockedByOrder: boolean;
+  /** D-17: chi tiết bước từ quy trình (hướng dẫn), map theo stepCode. */
+  guide: ProcessStepDto | undefined;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
   const [showAssign, setShowAssign] = React.useState(false);
+  const [guideOpen, setGuideOpen] = React.useState(false);
   const isMine = step.performerUserId === userId;
   const unassigned = !step.performerUserId;
   const needsPhoto =
@@ -453,7 +512,8 @@ function StepWorkCard({
   };
 
   return (
-    <div className={`exec-step${isMine ? ' mine' : ''}`}>
+    <div className={`exec-step st-${step.state === 'DONE' ? 'done' : step.state === 'IN_PROGRESS' ? 'progress' : 'pending'}${isMine ? ' mine' : ''}${blockedByOrder ? ' blocked' : ''}`}>
+      <span className="step-num" aria-hidden="true">{step.sortOrder}</span>
       <div className="exec-step-head">
         <div>
           <code>{step.stepCode}</code>{' '}
@@ -468,6 +528,8 @@ function StepWorkCard({
           {step.supervisorName ? ` · 🛡 ${step.supervisorName}` : ''}
         </div>
       </div>
+
+      {guide && <StepGuide guide={guide} open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} />}
 
       {step.evidence.length > 0 && (
         <div className="ev-list">
@@ -555,6 +617,10 @@ export function ExecutionDetail({
   const [users, setUsers] = React.useState<AssignableUser[]>([]);
   const [positions, setPositions] = React.useState<PositionDto[]>([]);
   const [stepReqs, setStepReqs] = React.useState<Record<string, StepPositionReq>>({});
+  /** D-17: chi tiết bước từ quy trình (hướng dẫn), map theo stepCode. */
+  const [guides, setGuides] = React.useState<Record<string, ProcessStepDto>>({});
+  /** D-17: modal xác nhận hủy lượt (thay window.confirm). */
+  const [cancelOpen, setCancelOpen] = React.useState(false);
   const canOperate = perms.includes('execution.operate');
 
   const load = React.useCallback(async () => {
@@ -563,20 +629,23 @@ export function ExecutionDetail({
     try {
       const d = (await api(`/executions/${executionId}`)) as { execution: ExecutionDto };
       setEx(d.execution);
-      // Yêu cầu chức vụ từng bước (D-14) — lấy từ bản quy trình, khớp theo step_code.
+      // Yêu cầu chức vụ từng bước (D-14) + hướng dẫn chi tiết (D-17) — từ bản quy trình, khớp theo step_code.
       try {
         const v = (await api(`/versions/${d.execution.versionId}`)) as {
           version: ProcessVersionDto;
-          steps: VersionStepLite[];
+          steps: ProcessStepDto[];
         };
         const map: Record<string, StepPositionReq> = {};
+        const gmap: Record<string, ProcessStepDto> = {};
         for (const s of v.steps ?? []) {
           map[s.code] = {
             performerPositions: s.performerPositions ?? [],
             supervisorPositions: s.supervisorPositions ?? [],
           };
+          gmap[s.code] = s;
         }
         setStepReqs(map);
+        setGuides(gmap);
       } catch {
         /* không chặn hiển thị chi tiết */
       }
@@ -599,7 +668,6 @@ export function ExecutionDetail({
 
   const runAction = async (action: 'start' | 'pause' | 'resume' | 'cancel' | 'submit' | 'cancel-submit' | 'approve') => {
     if (!ex || busy) return;
-    if (action === 'cancel' && !window.confirm(`Hủy lượt ${ex.code}?`)) return;
     setBusy(true);
     setError('');
     try {
@@ -608,6 +676,7 @@ export function ExecutionDetail({
         headers: { 'Idempotency-Key': newIdemKey() },
       })) as { execution: ExecutionDto };
       setEx(d.execution);
+      if (action === 'cancel') setCancelOpen(false);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -654,6 +723,31 @@ export function ExecutionDetail({
   const requiredTotal = ex.steps.filter((s) => s.required).length;
   const canFinish = canOperate && ex.state === 'IN_PROGRESS' && requiredDone === requiredTotal;
 
+  /** D-17: meta gọn thành lưới — chỉ hiện mục có dữ liệu. */
+  const metaItems: Array<{ label: string; value: string }> = [
+    ex.executionDate
+      ? { label: 'Ngày thực hiện', value: `${ex.executionDate}${ex.executionTime ? ` ${ex.executionTime}` : ''}${ex.shift ? ` · Ca ${SHIFT_LABEL[ex.shift]}` : ''}` }
+      : null,
+    ex.orgUnitName ? { label: 'Đơn vị', value: ex.orgUnitName } : null,
+    { label: 'Người tạo', value: `${ex.createdByName ?? '—'}${ex.createdByPositions ? ` — ${ex.createdByPositions}` : ''}` },
+    { label: 'Người thực hiện chính', value: ex.mainPerformerName ?? ex.createdByName ?? '—' },
+    ex.supervisorName ? { label: 'Người giám sát', value: ex.supervisorName } : null,
+    { label: 'Tạo lúc', value: new Date(ex.createdAt).toLocaleString('vi-VN') },
+    ex.approvalRequestedByName
+      ? {
+          label: 'Báo hoàn thành',
+          value: `📤 ${ex.approvalRequestedByName}${ex.approvalRequestedAt ? ` · ${new Date(ex.approvalRequestedAt).toLocaleString('vi-VN')}` : ''}`,
+        }
+      : null,
+    ex.approvedByName
+      ? {
+          label: 'Xác nhận hoàn thành',
+          value: `✓ ${ex.approvedByName}${ex.approvedAt ? ` · ${new Date(ex.approvedAt).toLocaleString('vi-VN')}` : ''}${ex.approvalNote ? ` — ${ex.approvalNote}` : ''}`,
+        }
+      : null,
+    ex.note ? { label: 'Ghi chú', value: `📝 ${ex.note}` } : null,
+  ].filter((i): i is { label: string; value: string } => i !== null);
+
   return (
     <div>
       <button type="button" className="btn-small" onClick={onBack}>← Danh sách lượt</button>
@@ -662,35 +756,80 @@ export function ExecutionDetail({
           <h3><code>{ex.code}</code> {ex.title || ex.processName}</h3>
           <p className="sec-desc">
             {ex.title ? <>{ex.processName} · </> : null}Bản v{ex.versionNo}
-            {ex.executionDate ? ` · Ngày thực hiện: ${ex.executionDate}` : ''}
-            {ex.executionTime ? ` ${ex.executionTime}` : ''}
-            {ex.shift ? ` · Ca: ${SHIFT_LABEL[ex.shift]}` : ''}
-            {ex.orgUnitName ? ` · ${ex.orgUnitName}` : ''}
           </p>
-          <p className="sec-desc">
-            Người tạo: {ex.createdByName ?? '—'}{ex.createdByPositions ? ` — ${ex.createdByPositions}` : ''}
-            {' · '}Người thực hiện chính: {ex.mainPerformerName ?? ex.createdByName ?? '—'}
-            {ex.supervisorName ? ` · Người giám sát: ${ex.supervisorName}` : ''}
-          </p>
-          <p className="sec-desc">
-            Tạo lúc {new Date(ex.createdAt).toLocaleString('vi-VN')}
-          </p>
-          {ex.approvalRequestedByName && (
-            <p className="sec-desc">
-              📤 {ex.approvalRequestedByName} báo hoàn thành
-              {ex.approvalRequestedAt ? ` lúc ${new Date(ex.approvalRequestedAt).toLocaleString('vi-VN')}` : ''}
-            </p>
-          )}
-          {ex.approvedByName && (
-            <p className="sec-desc">
-              ✓ {ex.approvedByName} xác nhận hoàn thành
-              {ex.approvedAt ? ` lúc ${new Date(ex.approvedAt).toLocaleString('vi-VN')}` : ''}
-              {ex.approvalNote ? ` — Lý do: ${ex.approvalNote}` : ''}
-            </p>
-          )}
-          {ex.note && <p className="sec-desc">📝 {ex.note}</p>}
         </div>
         <span className={`chip ${EXEC_STATE_CHIP[ex.state]}`}>{EXEC_STATE_LABEL[ex.state]}</span>
+      </div>
+
+      {/* D-17: cụm nút hành động sticky ngay dưới header */}
+      <div className="exec-actions-sticky">
+        {canOperate && ex.state === 'CREATED' && (
+          <>
+            <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('start')}>
+              {busy ? 'Đang xử lý…' : '▶ Bắt đầu'}
+            </button>
+            <button type="button" className="btn-small danger" disabled={busy} onClick={() => setCancelOpen(true)}>
+              Hủy lượt
+            </button>
+          </>
+        )}
+        {canOperate && ex.state === 'IN_PROGRESS' && (
+          <>
+            <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('pause')}>
+              {busy ? 'Đang xử lý…' : '⏸ Tạm dừng'}
+            </button>
+            <button
+              type="button"
+              className="btn-small primary"
+              disabled={busy || !canFinish}
+              onClick={() => runAction('submit')}
+              title={canFinish ? undefined : 'Còn bước bắt buộc chưa hoàn thành'}
+            >
+              📤 Báo hoàn thành
+            </button>
+            <button type="button" className="btn-small danger" disabled={busy} onClick={() => setCancelOpen(true)}>
+              Hủy lượt
+            </button>
+          </>
+        )}
+        {canOperate && ex.state === 'PAUSED' && (
+          <>
+            <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('resume')}>
+              {busy ? 'Đang xử lý…' : '▶ Tiếp tục'}
+            </button>
+            <button type="button" className="btn-small danger" disabled={busy} onClick={() => setCancelOpen(true)}>
+              Hủy lượt
+            </button>
+          </>
+        )}
+        {ex.state === 'PENDING_APPROVAL' && (
+          <>
+            {ex.approvalRequestedBy === userId && (
+              <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('cancel-submit')}>
+                {busy ? 'Đang xử lý…' : '↩ Hủy báo hoàn thành'}
+              </button>
+            )}
+            {(ex.supervisorId === userId || isSeniorApprover) && (
+              <>
+                <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('approve')}>
+                  {busy ? 'Đang xử lý…' : '✓ Xác nhận hoàn thành'}
+                </button>
+                <button type="button" className="btn-small danger" disabled={busy} onClick={() => setRejectOpen(true)}>
+                  ✕ Từ chối
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="exec-meta-grid">
+        {metaItems.map((m) => (
+          <div key={m.label} className="exec-meta-item">
+            <div className="exec-meta-label">{m.label}</div>
+            <div className="exec-meta-value">{m.value}</div>
+          </div>
+        ))}
       </div>
 
       <div className="exec-progress">
@@ -717,69 +856,25 @@ export function ExecutionDetail({
               positions={positions}
               req={stepReqs[s.stepCode]}
               blockedByOrder={ex.steps.some((p) => p.sortOrder < s.sortOrder && p.state !== 'DONE')}
+              guide={guides[s.stepCode]}
               onChanged={load}
             />
           ))}
         </div>
       </section>
 
-      {/* D-15: nút trạng thái lượt theo từng trạng thái */}
-      {canOperate && ex.state === 'CREATED' && (
-        <div className="exec-actions">
-          <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('start')}>
-            {busy ? 'Đang xử lý…' : '▶ Bắt đầu'}
-          </button>
-          <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
-            Hủy lượt
-          </button>
-        </div>
-      )}
-      {canOperate && ex.state === 'IN_PROGRESS' && (
-        <div className="exec-actions">
-          <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('pause')}>
-            {busy ? 'Đang xử lý…' : '⏸ Tạm dừng'}
-          </button>
-          <button
-            type="button"
-            className="btn-small primary"
-            disabled={busy || !canFinish}
-            onClick={() => runAction('submit')}
-            title={canFinish ? undefined : 'Còn bước bắt buộc chưa hoàn thành'}
-          >
-            📤 Báo hoàn thành
-          </button>
-          <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
-            Hủy lượt
-          </button>
-        </div>
-      )}
-      {canOperate && ex.state === 'PAUSED' && (
-        <div className="exec-actions">
-          <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('resume')}>
-            {busy ? 'Đang xử lý…' : '▶ Tiếp tục'}
-          </button>
-          <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
-            Hủy lượt
-          </button>
-        </div>
-      )}
-      {ex.state === 'PENDING_APPROVAL' && (
-        <div className="exec-actions">
-          {ex.approvalRequestedBy === userId && (
-            <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('cancel-submit')}>
-              {busy ? 'Đang xử lý…' : '↩ Hủy báo hoàn thành'}
-            </button>
-          )}
-          {(ex.supervisorId === userId || isSeniorApprover) && (
-            <>
-              <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('approve')}>
-                {busy ? 'Đang xử lý…' : '✓ Xác nhận hoàn thành'}
+      {cancelOpen && (
+        <div className="modal-backdrop" onClick={() => setCancelOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Hủy lượt {ex.code}?</h3>
+            <p className="sec-desc">Hành động này không thể hoàn tác.</p>
+            <div className="modal-actions">
+              <button type="button" className="btn-ghost" onClick={() => setCancelOpen(false)}>← Hủy bỏ</button>
+              <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
+                {busy ? 'Đang xử lý…' : 'Xác nhận hủy'}
               </button>
-              <button type="button" className="btn-small danger" disabled={busy} onClick={() => setRejectOpen(true)}>
-                ✕ Từ chối
-              </button>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       )}
       {rejectOpen && (
