@@ -44,7 +44,9 @@ import {
   toEvidenceDto,
   toExecutionDto,
   toExecutionStepDto,
+  type ListExecutionsFilter,
 } from './executionDb.js';
+import { buildCsv, computeKpiReport, fetchExportRows, toExportRow } from './reports.js';
 import { findProcess, findVersion as findVersionDb, getVersionSteps } from './processDb.js';
 import { getUserScopes, writeAudit } from './db.js';
 import {
@@ -386,7 +388,43 @@ executionApp.post(
   },
 );
 
-/** GET /executions — danh sách (lọc scope; ?mine=1 chỉ lượt có bước gán cho tôi). */
+/** T6 (RPT-001): đọc bộ lọc lượt từ query string. Trả về lỗi nếu ngày không hợp lệ. */
+function parseExecutionFilter(
+  query: (name: string) => string | undefined,
+  base: ListExecutionsFilter,
+): { filter: ListExecutionsFilter } | { error: string } {
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  const from = query('from') || undefined;
+  const to = query('to') || undefined;
+  if (from && !dateRe.test(from)) return { error: 'Tham số from phải dạng YYYY-MM-DD.' };
+  if (to && !dateRe.test(to)) return { error: 'Tham số to phải dạng YYYY-MM-DD.' };
+  if (from && to && from > to) return { error: 'from không được sau to.' };
+  const state = query('state') || undefined;
+  const validStates = ['CREATED', 'IN_PROGRESS', 'PAUSED', 'BLOCKED', 'COMPLETED', 'PENDING_APPROVAL', 'APPROVED', 'CANCELLED'];
+  if (state && !validStates.includes(state)) return { error: `Trạng thái không hợp lệ: ${state}.` };
+  const hasExceptionRaw = query('hasException');
+  const hasException = hasExceptionRaw === 'true' ? true : hasExceptionRaw === 'false' ? false : undefined;
+  if (hasExceptionRaw && hasException === undefined) return { error: 'hasException phải là true hoặc false.' };
+  const idsRaw = query('ids');
+  const ids = idsRaw ? idsRaw.split(',').map((s) => s.trim()).filter(Boolean).slice(0, 50) : undefined;
+  return {
+    filter: {
+      ...base,
+      q: query('q') || undefined,
+      processId: query('processId') || undefined,
+      versionId: query('versionId') || undefined,
+      state,
+      from,
+      to,
+      userId: query('userId') || undefined,
+      orgUnitId: query('orgUnitId') || undefined,
+      hasException,
+      ids,
+    },
+  };
+}
+
+/** GET /executions — danh sách (lọc scope; ?mine=1 chỉ lượt có bước gán cho tôi; T6: RPT-001). */
 executionApp.get('/executions', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
   const requestId = c.get('requestId') as string;
   const session = c.get('session') as AuthSession;
@@ -394,16 +432,60 @@ executionApp.get('/executions', requireAuth, requirePermission('execution.view' 
   const scopes = await getUserScopes(c.env.DB, session.user_id);
   const orgUnitIds = permissions.has('scope.manage') ? null : scopes;
   const mine = c.req.query('mine') === '1';
-  const state = c.req.query('state') || undefined;
-  const rows = await listExecutions(c.env.DB, {
+  const parsed = parseExecutionFilter((n) => c.req.query(n), {
     orgUnitIds,
     mineUserId: mine ? session.user_id : undefined,
-    state,
+  });
+  if ('error' in parsed) {
+    return c.json(errorBody('INVALID_REQUEST', parsed.error, requestId), 400);
+  }
+  const rows = await listExecutions(c.env.DB, {
+    ...parsed.filter,
     limit: 50,
   });
   const items: ExecutionDto[] = [];
   for (const r of rows) items.push(await toExecutionDto(c.env.DB, r));
   return c.json({ items, requestId });
+});
+
+/**
+ * GET /executions/export — xuất CSV theo cùng bộ lọc (RPT-003).
+ * Đăng ký TRƯỚC /executions/:id để không bị nuốt bởi param :id.
+ */
+executionApp.get('/executions/export', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
+  const requestId = c.get('requestId') as string;
+  const session = c.get('session') as AuthSession;
+  const permissions = new Set((c.get('permissions') ?? []) as string[]);
+  const scopes = await getUserScopes(c.env.DB, session.user_id);
+  const orgUnitIds = permissions.has('scope.manage') ? null : scopes;
+  const parsed = parseExecutionFilter((n) => c.req.query(n), { orgUnitIds });
+  if ('error' in parsed) {
+    return c.json(errorBody('INVALID_REQUEST', parsed.error, requestId), 400);
+  }
+  const rows = await fetchExportRows(c.env.DB, parsed.filter);
+  const csv = buildCsv(rows.map(toExportRow));
+  const stamp = new Date().toISOString().slice(0, 10);
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="bao-cao-luot-${stamp}.csv"`,
+    },
+  });
+});
+
+/** GET /reports/kpi — dashboard KPI (RPT-004/005/006). */
+executionApp.get('/reports/kpi', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
+  const requestId = c.get('requestId') as string;
+  const session = c.get('session') as AuthSession;
+  const permissions = new Set((c.get('permissions') ?? []) as string[]);
+  const scopes = await getUserScopes(c.env.DB, session.user_id);
+  const orgUnitIds = permissions.has('scope.manage') ? null : scopes;
+  const parsed = parseExecutionFilter((n) => c.req.query(n), { orgUnitIds });
+  if ('error' in parsed) {
+    return c.json(errorBody('INVALID_REQUEST', parsed.error, requestId), 400);
+  }
+  const report = await computeKpiReport(c.env.DB, parsed.filter);
+  return c.json({ report, requestId });
 });
 
 /** GET /executions/pending-approval-count — số lượt chờ duyệt mà tôi được duyệt (D-15, badge menu). */
