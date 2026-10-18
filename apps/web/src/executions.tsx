@@ -723,31 +723,18 @@ export function ExecutionDetail({
   const requiredTotal = ex.steps.filter((s) => s.required).length;
   const canFinish = canOperate && ex.state === 'IN_PROGRESS' && requiredDone === requiredTotal;
 
-  /** D-17: meta gọn thành lưới — chỉ hiện mục có dữ liệu. */
-  const metaItems: Array<{ label: string; value: string }> = [
-    ex.executionDate
-      ? { label: 'Ngày thực hiện', value: `${ex.executionDate}${ex.executionTime ? ` ${ex.executionTime}` : ''}${ex.shift ? ` · Ca ${SHIFT_LABEL[ex.shift]}` : ''}` }
-      : null,
-    ex.orgUnitName ? { label: 'Đơn vị', value: ex.orgUnitName } : null,
-    { label: 'Người tạo', value: `${ex.createdByName ?? '—'}${ex.createdByPositions ? ` — ${ex.createdByPositions}` : ''}` },
-    { label: 'Người thực hiện chính', value: ex.mainPerformerName ?? ex.createdByName ?? '—' },
-    ex.supervisorName ? { label: 'Người giám sát', value: ex.supervisorName } : null,
-    { label: 'Tạo lúc', value: new Date(ex.createdAt).toLocaleString('vi-VN') },
-    ex.approvalRequestedByName
-      ? {
-          label: 'Báo hoàn thành',
-          value: `📤 ${ex.approvalRequestedByName}${ex.approvalRequestedAt ? ` · ${new Date(ex.approvalRequestedAt).toLocaleString('vi-VN')}` : ''}`,
-        }
-      : null,
-    ex.approvedByName
-      ? {
-          label: 'Xác nhận hoàn thành',
-          value: `✓ ${ex.approvedByName}${ex.approvedAt ? ` · ${new Date(ex.approvedAt).toLocaleString('vi-VN')}` : ''}${ex.approvalNote ? ` — ${ex.approvalNote}` : ''}`,
-        }
-      : null,
-    ex.note ? { label: 'Ghi chú', value: `📝 ${ex.note}` } : null,
-  ].filter((i): i is { label: string; value: string } => i !== null);
+  /* D-18: nhật ký duyệt — mới nhất trước; lịch sử từ chối đánh số cũ → mới. */
+  const reviews = ex.reviews ?? [];
+  const rejects = reviews.filter((r) => r.action === 'reject').slice().reverse();
+  const isReturned = reviews.length > 0 && reviews[0].action === 'reject' && ex.state === 'IN_PROGRESS';
+  const pct = ex.steps.length > 0 ? Math.round((done / ex.steps.length) * 100) : 0;
+  const approverName = ex.supervisorName ?? ex.approvedByName ?? null;
+  const fmtDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString('vi-VN') : '—');
+  /* Vết báo/xác nhận gần nhất (từ nhật ký, không trùng với lịch sử từ chối). */
+  const latestSubmit = reviews.find((r) => r.action === 'submit');
+  const latestApprove = reviews.find((r) => r.action === 'approve');
 
+  /** D-17: meta gọn thành lưới — chỉ hiện mục có dữ liệu. */
   return (
     <div>
       <button type="button" className="btn-small" onClick={onBack}>← Danh sách lượt</button>
@@ -823,24 +810,111 @@ export function ExecutionDetail({
         )}
       </div>
 
-      <div className="exec-meta-grid">
-        {metaItems.map((m) => (
-          <div key={m.label} className="exec-meta-item">
-            <div className="exec-meta-label">{m.label}</div>
-            <div className="exec-meta-value">{m.value}</div>
-          </div>
-        ))}
-      </div>
+      {/* D-18: Thông tin lượt công việc đầy đủ (theo hình tham khảo) */}
+      <section className="exec-info">
+        <h3>Thông tin lượt công việc</h3>
 
-      <div className="exec-progress">
-        <div className="exec-progress-bar">
-          <div
-            className="exec-progress-fill"
-            style={{ width: ex.steps.length > 0 ? `${Math.round((done / ex.steps.length) * 100)}%` : '0%' }}
-          />
+        <div className="exec-info-row">
+          <div className="info-label">Trạng thái</div>
+          <div className="info-value">
+            <span className={`chip ${EXEC_STATE_CHIP[ex.state]}`}>{EXEC_STATE_LABEL[ex.state]}</span>
+            {isReturned && <span className="chip warn">🔄 Bị trả lại làm lại</span>}
+          </div>
         </div>
-        <span className="muted">{done}/{ex.steps.length} bước</span>
-      </div>
+
+        {rejects.length > 0 && (
+          <div className="exec-info-row">
+            <div className="info-label">Lịch sử từ chối ({rejects.length} lần)</div>
+            <div className="reject-list">
+              {rejects.map((r, i) => (
+                <div key={r.id} className="reject-item">
+                  <div className="reject-head">
+                    <strong>Lần {i + 1}</strong> · 🔄 Yêu cầu làm lại
+                  </div>
+                  <div className="muted">👤 {r.actorName ?? '—'} · 🕐 {fmtDateTime(r.createdAt)}</div>
+                  {r.reason && <div>Lý do: {r.reason}</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="exec-info-row">
+          <div className="info-label">Quy trình</div>
+          <div className="info-value strong">{ex.processName} ({ex.processCode})</div>
+        </div>
+
+        {latestSubmit && (
+          <div className="exec-info-row">
+            <div className="info-label">Báo hoàn thành</div>
+            <div className="info-value">📤 {latestSubmit.actorName ?? '—'} · {fmtDateTime(latestSubmit.createdAt)}</div>
+          </div>
+        )}
+
+        {latestApprove && (
+          <div className="exec-info-row">
+            <div className="info-label">Xác nhận hoàn thành</div>
+            <div className="info-value">✓ {latestApprove.actorName ?? '—'} · {fmtDateTime(latestApprove.createdAt)}</div>
+          </div>
+        )}
+
+        {ex.executionDate && (
+          <div className="exec-info-row">
+            <div className="info-label">Ngày thực hiện (dự kiến)</div>
+            <div className="info-value strong">
+              {ex.executionDate}{ex.executionTime ? ` · ${ex.executionTime}` : ''}{ex.shift ? ` · Ca ${SHIFT_LABEL[ex.shift]}` : ''}
+            </div>
+          </div>
+        )}
+
+        <div className="exec-info-row">
+          <div className="info-label">Bắt đầu lúc</div>
+          <div className="info-value strong">{fmtDateTime(ex.startedAt)}</div>
+        </div>
+
+        <div className="exec-info-row">
+          <div className="info-label">Người tạo</div>
+          <div className="info-value strong">
+            {ex.createdByName ?? '—'}{ex.createdByPositions ? ` — ${ex.createdByPositions}` : ''}
+          </div>
+        </div>
+
+        <div className="exec-info-row">
+          <div className="info-label">Người thực hiện chính</div>
+          <div className="info-value strong">{ex.mainPerformerName ?? ex.createdByName ?? '—'}</div>
+        </div>
+
+        {approverName && (
+          <div className="exec-info-row">
+            <div className="info-label">Người duyệt</div>
+            <div className="info-value strong">{approverName}</div>
+          </div>
+        )}
+
+        {ex.orgUnitName && (
+          <div className="exec-info-row">
+            <div className="info-label">Đơn vị</div>
+            <div className="info-value">{ex.orgUnitName}</div>
+          </div>
+        )}
+
+        {ex.note && (
+          <div className="exec-info-row">
+            <div className="info-label">Ghi chú</div>
+            <div className="info-value">📝 {ex.note}</div>
+          </div>
+        )}
+
+        <div className="exec-info-row">
+          <div className="info-label">Tiến độ</div>
+          <div className="info-value">
+            <div className="exec-progress-bar">
+              <div className="exec-progress-fill" style={{ width: `${pct}%` }} />
+            </div>
+            <span className="muted">{done}/{ex.steps.length} bước ({pct}%)</span>
+          </div>
+        </div>
+      </section>
 
       <section className="section">
         <h3>Các bước ({ex.steps.length})</h3>
