@@ -69,6 +69,8 @@ export interface ProcessVersionDto {
   impactAssessment: string | null;
   effectiveFrom: string | null;
   createdBy: string | null;
+  /** Tên hiển thị của người tạo bản (JOIN users qua created_by). */
+  createdByName: string | null;
   revision: number;
   createdAt: string;
   updatedAt: string;
