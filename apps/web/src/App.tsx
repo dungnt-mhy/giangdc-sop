@@ -26,6 +26,96 @@ interface MeResponse {
   scopes: string[];
 }
 
+interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string | null;
+  refType: string | null;
+  refId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+/** Chuông thông báo 2 chiều (D-15): badge chưa đọc, panel, bấm để tới lượt. */
+function NotificationBell({ onOpenExecution }: { onOpenExecution: (executionId: string) => void }) {
+  const [unread, setUnread] = React.useState(0);
+  const [open, setOpen] = React.useState(false);
+  const [items, setItems] = React.useState<NotificationItem[]>([]);
+
+  const refresh = React.useCallback(async () => {
+    try {
+      const d = (await api('/notifications/unread-count')) as { count: number };
+      setUnread(d.count ?? 0);
+      if (open) {
+        const l = (await api('/notifications?limit=30')) as { items: NotificationItem[] };
+        setItems(l.items ?? []);
+      }
+    } catch {
+      /* bỏ qua lỗi poll */
+    }
+  }, [open ]);
+
+  React.useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 60000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const openPanel = async () => {
+    const next = !open;
+    setOpen(next);
+    if (next) {
+      try {
+        const l = (await api('/notifications?limit=30')) as { items: NotificationItem[] };
+        setItems(l.items ?? []);
+      } catch {
+        /* bỏ qua */
+      }
+    }
+  };
+
+  const clickItem = async (n: NotificationItem) => {
+    try {
+      await api(`/notifications/${n.id}/read`, { method: 'POST' });
+    } catch {
+      /* bỏ qua */
+    }
+    setOpen(false);
+    setUnread((u) => Math.max(0, u - (n.isRead ? 0 : 1)));
+    if (n.refType === 'execution' && n.refId) onOpenExecution(n.refId);
+  };
+
+  return (
+    <div className="notif-wrap">
+      <button type="button" className="notif-bell" aria-label="Thông báo" onClick={openPanel}>
+        🔔
+        {unread > 0 && <span className="notif-badge">{unread > 99 ? '99+' : unread}</span>}
+      </button>
+      {open && (
+        <>
+          <div className="notif-backdrop" onClick={() => setOpen(false)} />
+          <div className="notif-panel">
+            <div className="notif-head">Thông báo</div>
+            {items.length === 0 ? (
+              <div className="notif-empty">Chưa có thông báo nào.</div>
+            ) : (
+              items.map((n) => (
+                <button key={n.id} type="button" className={`notif-item${n.isRead ? '' : ' unread'}`} onClick={() => clickItem(n)}>
+                  {!n.isRead && <span className="notif-dot" />}
+                  <div className="notif-title">{n.title}</div>
+                  {n.body && <div className="notif-body">{n.body}</div>}
+                  <div className="notif-time">{new Date(n.createdAt).toLocaleString('vi-VN')}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export async function api(path: string, init?: RequestInit) {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
@@ -302,6 +392,31 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   const initial = me.user.displayName.charAt(0).toUpperCase();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [nav, setNav] = React.useState('overview');
+  const [notifExecId, setNotifExecId] = React.useState<string | null>(null);
+  const isSeniorApprover = me.roles.some((r) => r.seniorApprover);
+  const [pendingApproval, setPendingApproval] = React.useState(0);
+
+  // D-15: badge số lượt chờ duyệt trên menu (poll 60s).
+  React.useEffect(() => {
+    let stop = false;
+    const load = async () => {
+      try {
+        const d = (await api('/executions/pending-approval-count')) as { count: number };
+        if (!stop) setPendingApproval(d.count ?? 0);
+      } catch {
+        /* bỏ qua */
+      }
+    };
+    load();
+    const t = setInterval(load, 60000);
+    return () => { stop = true; clearInterval(t); };
+  }, []);
+
+  const openExecutionFromNotif = (executionId: string) => {
+    setNotifExecId(executionId);
+    setNav('execution');
+    setDrawerOpen(false);
+  };
   const today = new Date()
     .toLocaleDateString('vi-VN', {
       weekday: 'long',
@@ -340,6 +455,9 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
             >
               <span className="ico">{item.ico}</span>
               {item.label}
+              {item.key === 'execution' && pendingApproval > 0 && (
+                <span className="nav-badge">{pendingApproval > 99 ? '99+' : pendingApproval}</span>
+              )}
               {!item.live && <span className="soon-tag">{item.tag}</span>}
             </button>
           ))}
@@ -351,6 +469,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
               <div className="uname">{me.user.displayName}</div>
               <div className="urole">{primaryRole ? primaryRole.name : '—'}</div>
             </div>
+            <NotificationBell onOpenExecution={openExecutionFromNotif} />
           </div>
           <button className="btn-ghost-light" onClick={onLogout}>
             Đăng xuất
@@ -367,6 +486,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           <span>SOP PLATFORM</span>
         </div>
         <div className="spacer" />
+        <NotificationBell onOpenExecution={openExecutionFromNotif} />
         <div className="user-avatar sm">{initial}</div>
       </div>
 
@@ -374,7 +494,12 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
         {nav === 'processes' ? (
           <ProcessesView perms={me.permissions} />
         ) : nav === 'execution' ? (
-          <ExecutionsView perms={me.permissions} userId={me.user.id} />
+          <ExecutionsView
+            perms={me.permissions}
+            userId={me.user.id}
+            isSeniorApprover={isSeniorApprover}
+            externalDetailId={notifExecId}
+          />
         ) : (
           <>
         <header className="topbar">
