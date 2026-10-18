@@ -7,6 +7,10 @@ import type {
   AssignStepBody,
   CreateExecutionBody,
   EvidenceDto,
+  ExceptionDto,
+  ExceptionHandleAction,
+  ExceptionSeverity,
+  ExceptionStatus,
   ExecutionDto,
   ExecutionShift,
   ExecutionState,
@@ -16,6 +20,11 @@ import type {
   ProcessDto,
   ProcessStepDto,
   ProcessVersionDto,
+} from '@giangdc-sop/contracts';
+import {
+  EXCEPTION_HANDLE_LABEL,
+  EXCEPTION_SEVERITY_LABEL,
+  EXCEPTION_STATUS_LABEL,
 } from '@giangdc-sop/contracts';
 import { api, API_BASE } from './App.js';
 import { ProcessDiagram } from './processes.js';
@@ -473,6 +482,7 @@ function StepWorkCard({
   guide,
   lastRedoReason,
   onChanged,
+  onFail,
 }: {
   step: ExecutionStepDto;
   executionId: string;
@@ -488,6 +498,8 @@ function StepWorkCard({
   /** D-21: lý do của lần trả làm lại gần nhất chứa bước này (cho tooltip badge). */
   lastRedoReason: string | null;
   onChanged: () => void;
+  /** T5: mở modal báo Không đạt. */
+  onFail: (step: ExecutionStepDto) => void;
 }) {
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -601,6 +613,15 @@ function StepWorkCard({
           >
             {busy ? 'Đang xử lý…' : '✓ Hoàn thành bước'}
           </button>
+          {/* T5: báo Không đạt — tạo ngoại lệ (EXP-001). */}
+          <button
+            type="button"
+            className="btn-small danger"
+            disabled={busy}
+            onClick={() => onFail(step)}
+          >
+            ✕ Không đạt
+          </button>
         </div>
       )}
 
@@ -686,6 +707,22 @@ export function ExecutionDetail({
   const [cancelOpen, setCancelOpen] = React.useState(false);
   /** D-19: chế độ xem bước — danh sách hoặc sơ đồ. */
   const [stepsView, setStepsView] = React.useState<'list' | 'diagram'>('list');
+  /** T5: ngoại lệ của lượt. */
+  const [exceptions, setExceptions] = React.useState<ExceptionDto[]>([]);
+  /** T5: modal báo Không đạt. */
+  const [failStep, setFailStep] = React.useState<ExecutionStepDto | null>(null);
+  const [failTitle, setFailTitle] = React.useState('');
+  const [failDesc, setFailDesc] = React.useState('');
+  const [failSeverity, setFailSeverity] = React.useState<ExceptionSeverity>('MEDIUM');
+  /** T5: modal xử lý ngoại lệ. */
+  const [handleEx, setHandleEx] = React.useState<ExceptionDto | null>(null);
+  const [handleAction, setHandleAction] = React.useState<ExceptionHandleAction>('REWORK');
+  const [handleNote, setHandleNote] = React.useState('');
+  const [escalateTo, setEscalateTo] = React.useState('');
+  const [escalateReason, setEscalateReason] = React.useState('');
+  /** T5: modal đóng ngoại lệ. */
+  const [resolveEx, setResolveEx] = React.useState<ExceptionDto | null>(null);
+  const [resolution, setResolution] = React.useState('');
   const canOperate = perms.includes('execution.operate');
 
   const load = React.useCallback(async () => {
@@ -722,6 +759,13 @@ export function ExecutionDetail({
       } catch {
         /* không chặn hiển thị chi tiết */
       }
+      // T5: tải ngoại lệ.
+      try {
+        const exList = (await api(`/executions/${executionId}/exceptions`)) as { exceptions: ExceptionDto[] };
+        setExceptions(exList.exceptions ?? []);
+      } catch {
+        /* không chặn hiển thị chi tiết */
+      }
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -754,6 +798,80 @@ export function ExecutionDetail({
   /** D-21: phương án từ chối — 'all' trả toàn bộ, 'steps' chọn bước làm lại. */
   const [rejectMode, setRejectMode] = React.useState<'all' | 'steps'>('all');
   const [rejectStepIds, setRejectStepIds] = React.useState<string[]>([]);
+
+  /** T5: báo Không đạt — tạo ngoại lệ. */
+  const doFailStep = async () => {
+    if (!failStep || busy) return;
+    if (!failTitle.trim() || !failDesc.trim()) { setError('Cần tiêu đề và mô tả ngoại lệ.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/executions/${executionId}/steps/${failStep.id}/fail`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ severity: failSeverity, title: failTitle.trim(), description: failDesc.trim() }),
+      });
+      setFailStep(null);
+      setFailTitle('');
+      setFailDesc('');
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** T5: giám sát xử lý ngoại lệ. */
+  const doHandleException = async () => {
+    if (!handleEx || busy) return;
+    if (handleAction === 'ESCALATE' && !escalateTo) { setError('Cần chọn người leo thang tới.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/exceptions/${handleEx.id}/handle`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: handleAction,
+          note: handleNote.trim() || undefined,
+          escalateTo: handleAction === 'ESCALATE' ? escalateTo : undefined,
+          escalateReason: handleAction === 'ESCALATE' ? (escalateReason.trim() || undefined) : undefined,
+        }),
+      });
+      setHandleEx(null);
+      setHandleNote('');
+      setEscalateTo('');
+      setEscalateReason('');
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** T5: đóng ngoại lệ. */
+  const doResolveException = async () => {
+    if (!resolveEx || busy) return;
+    if (!resolution.trim()) { setError('Cần mô tả cách khắc phục (EXP-005).'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/exceptions/${resolveEx.id}/resolve`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution: resolution.trim() }),
+      });
+      setResolveEx(null);
+      setResolution('');
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const openReject = () => {
     setRejectReason('');
@@ -1049,6 +1167,7 @@ export function ExecutionDetail({
                   ex.reviews.find((r) => r.action === 'reject' && r.stepIds?.includes(s.id))?.reason ?? null
                 }
                 onChanged={load}
+                onFail={(st) => { setFailStep(st); setFailTitle(''); setFailDesc(''); setFailSeverity('MEDIUM'); }}
               />
             ))}
           </div>
@@ -1067,6 +1186,48 @@ export function ExecutionDetail({
             openSteps={EMPTY_STEP_SET}
             onToggle={() => {}}
           />
+        )}
+      </section>
+
+      {/* T5: Ngoại lệ (EXP-001..006). */}
+      <section className="section">
+        <h3>⚠ Ngoại lệ ({exceptions.length})</h3>
+        {exceptions.length === 0 ? (
+          <div className="empty">Chưa có ngoại lệ.</div>
+        ) : (
+          <div className="ex-list">
+            {exceptions.map((x) => (
+              <div key={x.id} className={`ex-card sev-${x.severity.toLowerCase()}`}>
+                <div className="ex-head">
+                  <span className={`chip sm sev-${x.severity.toLowerCase()}`}>{EXCEPTION_SEVERITY_LABEL[x.severity]}</span>
+                  <span className="chip sm muted">{EXCEPTION_STATUS_LABEL[x.status]}</span>
+                  <strong>{x.stepCode}</strong> — {x.stepTitle}
+                </div>
+                <div className="ex-title">{x.title}</div>
+                <div className="ex-desc">{x.description}</div>
+                <div className="ex-meta">
+                  Báo bởi {x.createdByName ?? x.createdBy} · {new Date(x.createdAt).toLocaleString('vi-VN')}
+                  {x.handledByName && ` · Xử lý bởi ${x.handledByName} (${x.handleAction ? EXCEPTION_HANDLE_LABEL[x.handleAction] : ''})`}
+                  {x.resolvedByName && ` · Đóng bởi ${x.resolvedByName}`}
+                </div>
+                {x.resolution && <div className="ex-resolution">✓ Khắc phục: {x.resolution}</div>}
+                {canOperate && (x.status === 'OPEN' || x.status === 'ESCALATED') && (
+                  <div className="ex-actions">
+                    <button type="button" className="btn-small" disabled={busy} onClick={() => { setHandleEx(x); setHandleAction('REWORK'); setHandleNote(''); }}>
+                      Xử lý
+                    </button>
+                  </div>
+                )}
+                {canOperate && (x.status === 'IN_REMEDIATION' || x.status === 'CONDITIONAL_CONTINUE') && (
+                  <div className="ex-actions">
+                    <button type="button" className="btn-small primary" disabled={busy} onClick={() => { setResolveEx(x); setResolution(''); }}>
+                      Đóng ngoại lệ
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
@@ -1154,6 +1315,105 @@ export function ExecutionDetail({
         </div>
       )}
       {error && <div className="form-error">{error}</div>}
+
+      {/* T5: modal báo Không đạt. */}
+      {failStep && (
+        <div className="modal-backdrop" onClick={() => setFailStep(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>✕ Báo Không đạt — {failStep.stepCode}</h3>
+            <p className="sec-desc">{failStep.title} (EXP-001)</p>
+            <div className="field">
+              <label>Mức độ *</label>
+              <select className="input" value={failSeverity} onChange={(e) => setFailSeverity(e.target.value as ExceptionSeverity)}>
+                <option value="LOW">Thấp</option>
+                <option value="MEDIUM">Trung bình</option>
+                <option value="HIGH">Cao</option>
+                <option value="BLOCKING">Chặn lượt (tự động dừng lượt)</option>
+              </select>
+            </div>
+            <div className="field">
+              <label>Tiêu đề *</label>
+              <input className="input" value={failTitle} onChange={(e) => setFailTitle(e.target.value)} placeholder="Tóm tắt vấn đề" />
+            </div>
+            <div className="field">
+              <label>Mô tả chi tiết *</label>
+              <textarea className="input" rows={3} value={failDesc} onChange={(e) => setFailDesc(e.target.value)} placeholder="Mô tả rõ vấn đề phát hiện…" />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-ghost" onClick={() => setFailStep(null)}>Hủy</button>
+              <button type="button" className="btn-small danger" disabled={busy} onClick={doFailStep}>
+                {busy ? 'Đang gửi…' : 'Báo Không đạt'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* T5: modal xử lý ngoại lệ (giám sát). */}
+      {handleEx && (
+        <div className="modal-backdrop" onClick={() => setHandleEx(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Xử lý ngoại lệ — {handleEx.stepCode}</h3>
+            <p className="sec-desc">{handleEx.title} · Mức: {EXCEPTION_SEVERITY_LABEL[handleEx.severity]}</p>
+            <div className="field">
+              <label>Hành động *</label>
+              <select className="input" value={handleAction} onChange={(e) => setHandleAction(e.target.value as ExceptionHandleAction)}>
+                <option value="REWORK">🔄 Làm lại (bước về PENDING, tăng lần thử)</option>
+                <option value="CONDITIONAL_CONTINUE">⏭ Tiếp tục có điều kiện (bước coi như xong)</option>
+                <option value="CANCEL">✕ Hủy ngoại lệ</option>
+                <option value="ESCALATE">⬆ Leo thang (chuyển người xử lý)</option>
+              </select>
+            </div>
+            {handleAction === 'ESCALATE' && (
+              <>
+                <div className="field">
+                  <label>Leo thang tới *</label>
+                  <select className="input" value={escalateTo} onChange={(e) => setEscalateTo(e.target.value)}>
+                    <option value="">— Chọn người —</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>{u.displayName} ({u.username})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Lý do leo thang</label>
+                  <textarea className="input" rows={2} value={escalateReason} onChange={(e) => setEscalateReason(e.target.value)} />
+                </div>
+              </>
+            )}
+            <div className="field">
+              <label>Ghi chú xử lý</label>
+              <textarea className="input" rows={2} value={handleNote} onChange={(e) => setHandleNote(e.target.value)} />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-ghost" onClick={() => setHandleEx(null)}>Hủy</button>
+              <button type="button" className="btn-primary" disabled={busy} onClick={doHandleException}>
+                {busy ? 'Đang xử lý…' : 'Xác nhận'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* T5: modal đóng ngoại lệ. */}
+      {resolveEx && (
+        <div className="modal-backdrop" onClick={() => setResolveEx(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Đóng ngoại lệ — {resolveEx.stepCode}</h3>
+            <p className="sec-desc">{resolveEx.title} (EXP-005)</p>
+            <div className="field">
+              <label>Mô tả cách khắc phục *</label>
+              <textarea className="input" rows={3} value={resolution} onChange={(e) => setResolution(e.target.value)} placeholder="Đã khắc phục bằng cách…" />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-ghost" onClick={() => setResolveEx(null)}>Hủy</button>
+              <button type="button" className="btn-primary" disabled={busy} onClick={doResolveException}>
+                {busy ? 'Đang đóng…' : 'Đóng ngoại lệ'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
