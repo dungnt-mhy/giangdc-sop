@@ -30,6 +30,8 @@ const EXEC_STATE_LABEL: Record<ExecutionState, string> = {
   PAUSED: 'Tạm dừng',
   BLOCKED: 'Bị chặn',
   COMPLETED: 'Hoàn thành',
+  PENDING_APPROVAL: 'Chờ duyệt',
+  APPROVED: 'Đã duyệt',
   CANCELLED: 'Đã hủy',
 };
 
@@ -39,6 +41,8 @@ const EXEC_STATE_CHIP: Record<ExecutionState, string> = {
   PAUSED: 'warn',
   BLOCKED: 'warn',
   COMPLETED: 'ok',
+  PENDING_APPROVAL: 'warn',
+  APPROVED: 'ok',
   CANCELLED: 'muted',
 };
 
@@ -81,7 +85,12 @@ async function apiForm<T>(path: string, form: FormData): Promise<T> {
 
 /* ---------------- Danh sách lượt ---------------- */
 
-export function ExecutionsView({ perms, userId }: { perms: string[]; userId: string }) {
+export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetailId }: {
+  perms: string[];
+  userId: string;
+  isSeniorApprover: boolean;
+  externalDetailId?: string | null;
+}) {
   const [items, setItems] = React.useState<ExecutionDto[]>([]);
   const [mineOnly, setMineOnly] = React.useState(true);
   const [error, setError] = React.useState('');
@@ -89,6 +98,11 @@ export function ExecutionsView({ perms, userId }: { perms: string[]; userId: str
   const [showCreate, setShowCreate] = React.useState(false);
   const [detailId, setDetailId] = React.useState<string | null>(null);
   const canCreate = perms.includes('execution.create');
+
+  // D-15: mở chi tiết lượt từ thông báo.
+  React.useEffect(() => {
+    if (externalDetailId) setDetailId(externalDetailId);
+  }, [externalDetailId]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -111,6 +125,7 @@ export function ExecutionsView({ perms, userId }: { perms: string[]; userId: str
         executionId={detailId}
         userId={userId}
         perms={perms}
+        isSeniorApprover={isSeniorApprover}
         onBack={() => { setDetailId(null); load(); }}
       />
     );
@@ -233,8 +248,33 @@ function EvidenceThumb({ evidence }: { evidence: EvidenceDto }) {
   );
 }
 
-/** Nút chụp ảnh (D-12): mở camera thẳng trên mobile, chọn file trên desktop. */
-function PhotoCapture({
+/** Nén ảnh phía client (D-15): canvas, cạnh dài tối đa 1920px, JPEG quality 0.82. */
+async function compressImage(file: File): Promise<File> {
+  const bitmap = await createImageBitmap(file);
+  const maxDim = 1920;
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return file;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  const blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.82),
+  );
+  if (!blob) return file;
+  const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+  return new File([blob], name, { type: 'image/jpeg' });
+}
+
+const MAX_EVIDENCE_CLIENT_BYTES = 5 * 1024 * 1024;
+const DOC_ACCEPT = '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Upload bằng chứng (D-12/D-15): "📷 Chụp" (camera) + "+ Ảnh" (chọn ảnh) + "+ Tệp" (tài liệu). */
+function EvidenceUpload({
   executionId,
   stepId,
   onUploaded,
@@ -244,15 +284,25 @@ function PhotoCapture({
   onUploaded: () => void;
 }) {
   const [file, setFile] = React.useState<File | null>(null);
+  const [kind, setKind] = React.useState<'PHOTO' | 'FILE'>('PHOTO');
   const [preview, setPreview] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFileChange = (k: 'PHOTO' | 'FILE') => (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0] ?? null;
+    e.target.value = '';
     if (preview) URL.revokeObjectURL(preview);
     setFile(f);
-    setPreview(f ? URL.createObjectURL(f) : null);
+    setKind(k);
+    setPreview(f && k === 'PHOTO' ? URL.createObjectURL(f) : null);
+    setError('');
+  };
+
+  const clear = () => {
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(null);
+    setPreview(null);
     setError('');
   };
 
@@ -261,16 +311,24 @@ function PhotoCapture({
     setBusy(true);
     setError('');
     try {
+      let toSend = file;
+      if (kind === 'PHOTO') {
+        // D-15: nén ảnh phía client trước khi upload.
+        toSend = await compressImage(file);
+        if (toSend.size > MAX_EVIDENCE_CLIENT_BYTES) {
+          throw new Error('Ảnh sau khi nén vẫn vượt quá 5MB, vui lòng chọn ảnh khác.');
+        }
+      } else if (toSend.size > MAX_EVIDENCE_CLIENT_BYTES) {
+        throw new Error('Tệp vượt quá 5MB.');
+      }
       const fd = new FormData();
-      fd.append('photo', file);
-      fd.append('kind', 'PHOTO');
+      fd.append('photo', toSend);
+      fd.append('kind', kind);
       await apiForm<{ evidence: EvidenceDto }>(
         `/executions/${executionId}/steps/${stepId}/evidence`,
         fd,
       );
-      if (preview) URL.revokeObjectURL(preview);
-      setFile(null);
-      setPreview(null);
+      clear();
       onUploaded();
     } catch (e) {
       setError(errMsg(e));
@@ -281,34 +339,33 @@ function PhotoCapture({
 
   return (
     <div className="photo-capture">
-      <label className="btn-small primary photo-btn">
-        📷 Chụp ảnh
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={onFileChange}
-          hidden
-        />
-      </label>
-      {preview && (
+      <div className="ev-btn-row">
+        <label className="btn-small primary photo-btn">
+          📷 Chụp
+          <input type="file" accept="image/*" capture="environment" onChange={onFileChange('PHOTO')} hidden />
+        </label>
+        <label className="btn-small photo-btn">
+          + Ảnh
+          <input type="file" accept="image/*" onChange={onFileChange('PHOTO')} hidden />
+        </label>
+        <label className="btn-small photo-btn">
+          + Tệp
+          <input type="file" accept={DOC_ACCEPT} onChange={onFileChange('FILE')} hidden />
+        </label>
+      </div>
+      {file && (
         <div className="photo-preview-wrap">
-          <img src={preview} alt="Ảnh chuẩn bị tải lên" className="photo-preview" />
+          {preview ? (
+            <img src={preview} alt="Ảnh chuẩn bị tải lên" className="photo-preview" />
+          ) : (
+            <div className="ev-file-name">📄 {file.name}</div>
+          )}
           <div className="photo-actions">
             <button type="button" className="btn-small primary" disabled={busy} onClick={upload}>
-              {busy ? 'Đang tải lên…' : 'Tải ảnh lên'}
+              {busy ? 'Đang tải lên…' : kind === 'PHOTO' ? 'Tải ảnh lên' : 'Tải tệp lên'}
             </button>
-            <button
-              type="button"
-              className="btn-small"
-              disabled={busy}
-              onClick={() => {
-                if (preview) URL.revokeObjectURL(preview);
-                setFile(null);
-                setPreview(null);
-              }}
-            >
-              Chụp lại
+            <button type="button" className="btn-small" disabled={busy} onClick={clear}>
+              Chọn lại
             </button>
           </div>
         </div>
@@ -437,7 +494,7 @@ function StepWorkCard({
 
       {isMine && canOperate && step.state === 'IN_PROGRESS' && (
         <div className="step-work-actions">
-          <PhotoCapture
+          <EvidenceUpload
             executionId={executionId}
             stepId={step.id}
             onUploaded={onChanged}
@@ -478,11 +535,13 @@ export function ExecutionDetail({
   executionId,
   userId,
   perms,
+  isSeniorApprover,
   onBack,
 }: {
   executionId: string;
   userId: string;
   perms: string[];
+  isSeniorApprover: boolean;
   onBack: () => void;
 }) {
   const [ex, setEx] = React.useState<ExecutionDto | null>(null);
@@ -534,7 +593,7 @@ export function ExecutionDetail({
 
   React.useEffect(() => { load(); }, [load]);
 
-  const finishExecution = async (action: 'complete' | 'cancel') => {
+  const runAction = async (action: 'start' | 'pause' | 'resume' | 'complete' | 'cancel' | 'submit' | 'cancel-submit' | 'approve') => {
     if (!ex || busy) return;
     if (action === 'cancel' && !window.confirm(`Hủy lượt ${ex.code}?`)) return;
     setBusy(true);
@@ -545,6 +604,29 @@ export function ExecutionDetail({
         headers: { 'Idempotency-Key': newIdemKey() },
       })) as { execution: ExecutionDto };
       setEx(d.execution);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const [rejectOpen, setRejectOpen] = React.useState(false);
+  const [rejectReason, setRejectReason] = React.useState('');
+
+  const doReject = async () => {
+    if (!ex || busy || !rejectReason.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      const d = (await api(`/executions/${ex.id}/reject`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': newIdemKey() },
+        body: JSON.stringify({ reason: rejectReason.trim() }),
+      })) as { execution: ExecutionDto };
+      setEx(d.execution);
+      setRejectOpen(false);
+      setRejectReason('');
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -589,6 +671,19 @@ export function ExecutionDetail({
           <p className="sec-desc">
             Tạo lúc {new Date(ex.createdAt).toLocaleString('vi-VN')}
           </p>
+          {ex.approvalRequestedByName && (
+            <p className="sec-desc">
+              📤 {ex.approvalRequestedByName} gửi duyệt
+              {ex.approvalRequestedAt ? ` lúc ${new Date(ex.approvalRequestedAt).toLocaleString('vi-VN')}` : ''}
+            </p>
+          )}
+          {ex.approvedByName && (
+            <p className="sec-desc">
+              ✓ {ex.approvedByName} duyệt
+              {ex.approvedAt ? ` lúc ${new Date(ex.approvedAt).toLocaleString('vi-VN')}` : ''}
+              {ex.approvalNote ? ` — Lý do: ${ex.approvalNote}` : ''}
+            </p>
+          )}
           {ex.note && <p className="sec-desc">📝 {ex.note}</p>}
         </div>
         <span className={`chip ${EXEC_STATE_CHIP[ex.state]}`}>{EXEC_STATE_LABEL[ex.state]}</span>
@@ -623,25 +718,93 @@ export function ExecutionDetail({
         </div>
       </section>
 
-      {canOperate && (ex.state === 'IN_PROGRESS' || ex.state === 'CREATED') && (
+      {/* D-15: nút trạng thái lượt theo từng trạng thái */}
+      {canOperate && ex.state === 'CREATED' && (
         <div className="exec-actions">
+          <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('start')}>
+            {busy ? 'Đang xử lý…' : '▶ Bắt đầu'}
+          </button>
+          <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
+            Hủy lượt
+          </button>
+        </div>
+      )}
+      {canOperate && ex.state === 'IN_PROGRESS' && (
+        <div className="exec-actions">
+          <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('pause')}>
+            {busy ? 'Đang xử lý…' : '⏸ Tạm dừng'}
+          </button>
           <button
             type="button"
             className="btn-small primary"
             disabled={busy || !canFinish}
-            onClick={() => finishExecution('complete')}
+            onClick={() => runAction('complete')}
             title={canFinish ? undefined : 'Còn bước bắt buộc chưa hoàn thành'}
           >
-            ✓ Kết thúc lượt
+            ✓ Hoàn thành lượt
           </button>
-          <button
-            type="button"
-            className="btn-small danger"
-            disabled={busy}
-            onClick={() => finishExecution('cancel')}
-          >
+          <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
             Hủy lượt
           </button>
+        </div>
+      )}
+      {canOperate && ex.state === 'PAUSED' && (
+        <div className="exec-actions">
+          <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('resume')}>
+            {busy ? 'Đang xử lý…' : '▶ Tiếp tục'}
+          </button>
+          <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
+            Hủy lượt
+          </button>
+        </div>
+      )}
+      {ex.state === 'COMPLETED' && (ex.createdBy === userId || canOperate) && (
+        <div className="exec-actions">
+          <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('submit')}>
+            {busy ? 'Đang xử lý…' : '📤 Gửi duyệt'}
+          </button>
+        </div>
+      )}
+      {ex.state === 'PENDING_APPROVAL' && (
+        <div className="exec-actions">
+          {ex.approvalRequestedBy === userId && (
+            <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('cancel-submit')}>
+              {busy ? 'Đang xử lý…' : '↩ Hủy duyệt'}
+            </button>
+          )}
+          {(ex.supervisorId === userId || isSeniorApprover) && (
+            <>
+              <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('approve')}>
+                {busy ? 'Đang xử lý…' : '✓ Duyệt'}
+              </button>
+              <button type="button" className="btn-small danger" disabled={busy} onClick={() => setRejectOpen(true)}>
+                ✕ Từ chối
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {rejectOpen && (
+        <div className="modal-backdrop" onClick={() => setRejectOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Từ chối duyệt lượt {ex.code}</h3>
+            <div className="field">
+              <label>Lý do từ chối *</label>
+              <textarea
+                className="input"
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                placeholder="Ghi rõ lý do từ chối…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="btn-ghost" onClick={() => setRejectOpen(false)}>Hủy</button>
+              <button type="button" className="btn-small danger" disabled={busy || !rejectReason.trim()} onClick={doReject}>
+                {busy ? 'Đang xử lý…' : 'Xác nhận từ chối'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
       {error && <div className="form-error">{error}</div>}
