@@ -373,6 +373,10 @@ processApp.patch('/versions/:versionId', requireAuth, requirePermission('process
   if (!version) {
     return c.json(errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId), 404);
   }
+  // D-20b: version đã hủy đóng băng mọi thao tác.
+  if (version.voidedAt) {
+    return c.json(errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId), 409);
+  }
   if (!isEditableState(version.state)) {
     return c.json(errorBody('VERSION_LOCKED', 'Phiên bản đã khóa sửa từ IN_REVIEW (GOV-001, AC-02).', requestId), 409);
   }
@@ -600,6 +604,10 @@ processApp.post('/versions/:versionId/submit', requireAuth, requirePermission('p
     if (!version) {
       return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
     }
+    // D-20b: version đã hủy đóng băng mọi transition.
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId) };
+    }
     if (version.state !== 'DRAFT') {
       return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ gửi thẩm định từ DRAFT.', requestId) };
     }
@@ -694,6 +702,10 @@ processApp.post('/versions/:versionId/return', requireAuth, requirePermission('p
   if (!version) {
     return c.json(errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId), 404);
   }
+  // D-20b: version đã hủy đóng băng mọi transition.
+  if (version.voidedAt) {
+    return c.json(errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId), 409);
+  }
   if (version.state !== 'IN_REVIEW') {
     return c.json(errorBody('INVALID_STATE', 'Chỉ trả sửa từ IN_REVIEW.', requestId), 409);
   }
@@ -729,6 +741,10 @@ processApp.post('/versions/:versionId/approve', requireAuth, requirePermission('
     const version = await findVersion(c.env.DB, c.req.param('versionId'));
     if (!version) {
       return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
+    }
+    // D-20b: version đã hủy đóng băng mọi transition.
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId) };
     }
     if (version.state !== 'IN_REVIEW') {
       return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ phê duyệt từ IN_REVIEW.', requestId) };
@@ -796,6 +812,10 @@ processApp.post('/versions/:versionId/release', requireAuth, requirePermission('
     if (!version) {
       return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
     }
+    // D-20b: version đã hủy đóng băng mọi transition.
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId) };
+    }
     if (version.state === 'ACTIVE') {
       // Retry idempotent (AC-02): đã ACTIVE thì trả lại, không tạo thêm.
       return { status: 200, body: { version, alreadyActive: true } };
@@ -856,6 +876,10 @@ processApp.post('/versions/:versionId/activate', requireAuth, requirePermission(
     if (!version) {
       return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
     }
+    // D-20b: version đã hủy đóng băng mọi transition.
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId) };
+    }
     if (version.state === 'ACTIVE') {
       return { status: 200, body: { version, alreadyActive: true } };
     }
@@ -893,17 +917,22 @@ processApp.post('/versions/:versionId/activate', requireAuth, requirePermission(
   });
 });
 
-/** POST /versions/:versionId/retire — ngừng dùng bản đã thay thế (GOV-007). */
+/** POST /versions/:versionId/retire — ngừng dùng (GOV-007; D-20 mở rộng: cả bản ACTIVE). */
 processApp.post('/versions/:versionId/retire', requireAuth, requirePermission('process.deprecate'), async (c) => {
   const requestId = c.get('requestId') as string;
   const session = c.get('session') as AuthSession;
-  const body = await parseJson<{ expectedRevision?: number }>(c);
+  const body = await parseJson<{ reason?: string; expectedRevision?: number }>(c);
   const version = await findVersion(c.env.DB, c.req.param('versionId'));
   if (!version) {
     return c.json(errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId), 404);
   }
-  if (version.state !== 'SUPERSEDED') {
-    return c.json(errorBody('INVALID_STATE', 'Chỉ ngừng dùng bản SUPERSEDED (qua ACTIVE → SUPERSEDED).', requestId), 409);
+  // D-20b: version đã hủy đóng băng mọi transition.
+  if (version.voidedAt) {
+    return c.json(errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId), 409);
+  }
+  // D-20: cho phép ACTIVE -> RETIRED ("Ngừng") bên cạnh SUPERSEDED -> RETIRED.
+  if (!canVersionTransition(version.state as ProcessVersionState, 'RETIRED')) {
+    return c.json(errorBody('INVALID_STATE', 'Chỉ ngừng dùng bản ACTIVE hoặc SUPERSEDED.', requestId), 409);
   }
   const ok = await updateVersionState(
     c.env.DB, version.id, { state: 'RETIRED' }, body?.expectedRevision ?? version.revision,
@@ -913,7 +942,138 @@ processApp.post('/versions/:versionId/retire', requireAuth, requirePermission('p
   }
   await writeAudit(c.env.DB, {
     id: newId(), actorId: session.user_id, action: 'process.version.retire',
-    objectType: 'process_version', objectId: version.id, requestId,
+    objectType: 'process_version', objectId: version.id,
+    reason: body?.reason?.trim() || undefined, requestId,
   });
   return c.json({ version: await findVersion(c.env.DB, version.id) });
+});
+
+/** POST /versions/:versionId/cancel-approval — hủy phê duyệt, về DRAFT (D-20). */
+processApp.post('/versions/:versionId/cancel-approval', requireAuth, requirePermission('process.approve'), async (c) => {
+  const body = await parseJson<{ reason?: string; expectedRevision?: number }>(c);
+  return withIdempotency(c, 'process.version.cancel-approval', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const version = await findVersion(c.env.DB, c.req.param('versionId'));
+    if (!version) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
+    }
+    // D-20b: version đã hủy đóng băng mọi transition.
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể thao tác.', requestId) };
+    }
+    if (version.state !== 'APPROVED') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ hủy phê duyệt bản APPROVED.', requestId) };
+    }
+    const reason = body?.reason?.trim() ?? '';
+    if (!reason) {
+      return { status: 400, body: errorBody('REASON_REQUIRED', 'Hủy phê duyệt phải ghi rõ lý do.', requestId) };
+    }
+    if (!canVersionTransition(version.state as ProcessVersionState, 'DRAFT')) {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Transition không hợp lệ.', requestId) };
+    }
+    const ok = await updateVersionState(
+      c.env.DB, version.id, { state: 'DRAFT' }, body?.expectedRevision ?? version.revision,
+    );
+    if (!ok) {
+      return { status: 409, body: errorBody('CONCURRENT_MODIFICATION', 'Phiên bản đã bị thay đổi bởi người khác.', requestId) };
+    }
+    await c.env.DB.prepare(
+      `INSERT INTO approval_records (id, version_id, approver_id, approver_role, decision, reason)
+       VALUES (?1,?2,?3,?4,'RETURNED',?5)`,
+    )
+      .bind(newId(), version.id, session.user_id, ((c.get('roles') ?? []) as DbRole[])[0]?.code ?? null, reason)
+      .run();
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: 'process.version.cancel-approval',
+      objectType: 'process_version', objectId: version.id, reason, requestId,
+    });
+    return { status: 200, body: { version: await findVersion(c.env.DB, version.id) } };
+  });
+});
+
+/** POST /versions/:versionId/reactivate — kích hoạt lại bản đã ngừng, qua thẩm định lại (D-20). */
+processApp.post('/versions/:versionId/reactivate', requireAuth, requirePermission('process.edit'), async (c) => {
+  const body = await parseJson<{ reason?: string; expectedRevision?: number }>(c);
+  return withIdempotency(c, 'process.version.reactivate', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const version = await findVersion(c.env.DB, c.req.param('versionId'));
+    if (!version) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
+    }
+    // D-20b: version đã hủy thì không kích hoạt lại được (kiểm tra TRƯỚC ACTIVE_VERSION_EXISTS).
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('VERSION_VOIDED', 'Phiên bản đã bị hủy, không thể kích hoạt lại.', requestId) };
+    }
+    if (version.state !== 'SUPERSEDED' && version.state !== 'RETIRED') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ kích hoạt lại bản SUPERSEDED hoặc RETIRED.', requestId) };
+    }
+    // D-20: không chạy song song — phải ngừng bản đang hiệu lực trước.
+    const siblings = await listVersions(c.env.DB, version.processId);
+    const blocking = siblings.find(
+      (v) => v.id !== version.id && (v.state === 'ACTIVE' || v.state === 'SCHEDULED'),
+    );
+    if (blocking) {
+      return {
+        status: 409,
+        body: errorBody('ACTIVE_VERSION_EXISTS', 'Phải ngừng bản đang hiệu lực trước khi kích hoạt lại.', requestId),
+      };
+    }
+    if (!canVersionTransition(version.state as ProcessVersionState, 'IN_REVIEW')) {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Transition không hợp lệ.', requestId) };
+    }
+    const ok = await updateVersionState(
+      c.env.DB, version.id, { state: 'IN_REVIEW' }, body?.expectedRevision ?? version.revision,
+    );
+    if (!ok) {
+      return { status: 409, body: errorBody('CONCURRENT_MODIFICATION', 'Phiên bản đã bị thay đổi bởi người khác.', requestId) };
+    }
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: 'process.version.reactivate',
+      objectType: 'process_version', objectId: version.id,
+      reason: body?.reason?.trim() || undefined, requestId,
+    });
+    return { status: 200, body: { version: await findVersion(c.env.DB, version.id) } };
+  });
+});
+
+/** POST /versions/:versionId/void — hủy bỏ bản đã ngừng (D-20b: set cờ voided_at, giữ nguyên state). */
+processApp.post('/versions/:versionId/void', requireAuth, requirePermission('process.deprecate'), async (c) => {
+  const body = await parseJson<{ reason?: string; expectedRevision?: number }>(c);
+  return withIdempotency(c, 'process.version.void', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const version = await findVersion(c.env.DB, c.req.param('versionId'));
+    if (!version) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy phiên bản.', requestId) };
+    }
+    if (version.state !== 'SUPERSEDED' && version.state !== 'RETIRED') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ hủy bỏ bản SUPERSEDED hoặc RETIRED.', requestId) };
+    }
+    // D-20b: đã hủy rồi thì báo, không set lại.
+    if (version.voidedAt) {
+      return { status: 409, body: errorBody('ALREADY_VOIDED', 'Phiên bản đã bị hủy trước đó.', requestId) };
+    }
+    const reason = body?.reason?.trim() ?? '';
+    if (!reason) {
+      return { status: 400, body: errorBody('REASON_REQUIRED', 'Hủy bỏ phiên bản phải ghi rõ lý do.', requestId) };
+    }
+    // D-20b: không đổi state (giữ CHECK nguyên) — chỉ set cờ, kèm revision check.
+    const now = new Date().toISOString();
+    const res = await c.env.DB.prepare(
+      `UPDATE process_versions SET voided_at = ?2, void_reason = ?3, revision = revision + 1,
+       updated_at = ?4 WHERE id = ?1 AND revision = ?5`,
+    )
+      .bind(version.id, now, reason, now, body?.expectedRevision ?? version.revision)
+      .run();
+    if ((res.meta.changes ?? 0) !== 1) {
+      return { status: 409, body: errorBody('CONCURRENT_MODIFICATION', 'Phiên bản đã bị thay đổi bởi người khác.', requestId) };
+    }
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: 'process.version.void',
+      objectType: 'process_version', objectId: version.id, reason, requestId,
+    });
+    return { status: 200, body: { version: await findVersion(c.env.DB, version.id) } };
+  });
 });
