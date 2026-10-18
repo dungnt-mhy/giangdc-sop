@@ -681,3 +681,7 @@ Trình kế hoạch T3 để chủ sản phẩm duyệt (theo AGENTS.md: chưa d
 
 Đọc AGENTS.md → HANDOFF.md (file này) → PROGRESS.md → DECISIONS.md → SPEC.md → TASKS.md,
 rồi bắt đầu T1.1 sau khi chủ sản phẩm chốt GitHub/Cloudflare (hoặc làm phần code trước).
+
+## D-20c (18/10/2026 tối) — chờ parent deploy
+- Đổi nhãn nút Lịch sử phiên bản theo ảnh mẫu user: "⏸ Ngừng" (ACTIVE), "🔄 Yêu cầu kích hoạt lại" (SUPERSEDED/RETIRED); giữ "Hủy bỏ".
+- Build + tsc sạch. Chưa deploy/push. Parent deploy xong có thể kiểm thử trình duyệt nhanh: bản ACTIVE hiện "⏸ Ngừng", bản Đã thay thế/Ngừng dùng hiện "🔄 Yêu cầu kích hoạt lại" + "Hủy bỏ".
