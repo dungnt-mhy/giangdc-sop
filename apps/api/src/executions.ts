@@ -5,6 +5,7 @@
 import { Hono } from 'hono';
 import {
   allRequiredStepsDone,
+  canStartStepByOrder,
   canStepTransition,
   canTransition,
   checkStepAssignees,
@@ -489,7 +490,7 @@ async function loadStepOp(
   return { row, step, session, requestId };
 }
 
-/** POST /executions/:id/steps/:stepId/start — bắt đầu bước. */
+/** POST /executions/:id/steps/:stepId/start — bắt đầu bước (D-16: chỉ khi lượt Đang thực hiện + bước tuần tự). */
 executionApp.post(
   '/executions/:id/steps/:stepId/start',
   requireAuth,
@@ -498,32 +499,27 @@ executionApp.post(
     const loaded = await loadStepOp(c, { executionId: c.req.param('id'), stepId: c.req.param('stepId') });
     if ('error' in loaded) return loaded.error;
     const { row, step, session, requestId } = loaded;
-    if (!['CREATED', 'IN_PROGRESS'].includes(row.state)) {
-      return c.json(errorBody('EXECUTION_STATE_INVALID', `Lượt ở trạng thái ${row.state}, không thể bắt đầu bước.`, requestId), 409);
+    if (row.state !== 'IN_PROGRESS') {
+      return c.json(errorBody('EXECUTION_STATE_INVALID', `Lượt ở trạng thái ${row.state}, chỉ bắt đầu bước khi lượt đang thực hiện.`, requestId), 409);
     }
     if (!canStepTransition(step.state as 'PENDING', 'IN_PROGRESS')) {
       return c.json(errorBody('STEP_STATE_INVALID', `Bước đang ở trạng thái ${step.state}.`, requestId), 409);
     }
-    const now = new Date().toISOString();
-    const batch = [
-      c.env.DB.prepare(
-        `UPDATE execution_steps SET state = 'IN_PROGRESS', started_at = ?1 WHERE id = ?2`,
-      ).bind(now, step.id),
-    ];
-    let newExecState = row.state;
-    if (row.state === 'CREATED' && canTransition('CREATED', 'IN_PROGRESS')) {
-      newExecState = 'IN_PROGRESS';
-      batch.push(
-        c.env.DB.prepare(`UPDATE executions SET state = 'IN_PROGRESS', updated_at = ?1 WHERE id = ?2`).bind(now, row.id),
-      );
+    // D-16: bước làm tuần tự — chỉ mở khi mọi bước trước đã DONE.
+    const allSteps = await getExecutionSteps(c.env.DB, row.id);
+    if (!canStartStepByOrder(allSteps.map((s) => ({ sortOrder: s.sort_order, state: s.state })), step.sort_order)) {
+      return c.json(errorBody('STEP_OUT_OF_ORDER', 'Phải hoàn thành các bước trước theo thứ tự.', requestId), 409);
     }
-    await c.env.DB.batch(batch);
+    const now = new Date().toISOString();
+    await c.env.DB.prepare(
+      `UPDATE execution_steps SET state = 'IN_PROGRESS', started_at = ?1 WHERE id = ?2`,
+    ).bind(now, step.id).run();
     await writeAudit(c.env.DB, {
       id: newId(), actorId: session.user_id, action: 'execution.step_start',
       objectType: 'execution_step', objectId: step.id, reason: `${row.code}/${step.step_code}`, requestId,
     });
     const updated = await findExecutionStep(c.env.DB, row.id, step.id);
-    return c.json({ step: updated ? toExecutionStepDto(updated, []) : null, executionState: newExecState });
+    return c.json({ step: updated ? toExecutionStepDto(updated, []) : null, executionState: row.state });
   },
 );
 
@@ -558,32 +554,6 @@ executionApp.post(
     return c.json({ step: updated ? toExecutionStepDto(updated, []) : null });
   },
 );
-
-/** POST /executions/:id/complete — kết thúc lượt (mọi bước bắt buộc đã DONE). */
-executionApp.post('/executions/:id/complete', requireAuth, requirePermission('execution.operate' as Permission), async (c) => {
-  const requestId = c.get('requestId') as string;
-  const session = c.get('session') as AuthSession;
-  const row = await findExecution(c.env.DB, c.req.param('id'));
-  if (!row) {
-    return c.json(errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId), 404);
-  }
-  const scopeCheck = await checkExecutionScope(c, row.org_unit_id, row.id);
-  if (!scopeCheck.ok) return scopeCheck.response;
-  if (!canTransition(row.state as 'IN_PROGRESS', 'COMPLETED')) {
-    return c.json(errorBody('EXECUTION_STATE_INVALID', `Lượt ở trạng thái ${row.state}, không thể kết thúc.`, requestId), 409);
-  }
-  const steps = await getExecutionSteps(c.env.DB, row.id);
-  if (!allRequiredStepsDone(steps.map((s) => ({ required: s.required === 1, state: s.state as 'PENDING' })))) {
-    return c.json(errorBody('STEPS_INCOMPLETE', 'Còn bước bắt buộc chưa hoàn thành.', requestId), 400);
-  }
-  const now = new Date().toISOString();
-  await c.env.DB.prepare(`UPDATE executions SET state = 'COMPLETED', updated_at = ?1 WHERE id = ?2`).bind(now, row.id).run();
-  await writeAudit(c.env.DB, {
-    id: newId(), actorId: session.user_id, action: 'execution.complete',
-    objectType: 'execution', objectId: row.id, reason: row.code, requestId,
-  });
-  return c.json({ execution: await toExecutionDto(c.env.DB, (await findExecution(c.env.DB, row.id))!) });
-});
 
 /** POST /executions/:id/cancel — hủy lượt. */
 executionApp.post('/executions/:id/cancel', requireAuth, requirePermission('execution.operate' as Permission), async (c) => {
@@ -726,7 +696,7 @@ executionApp.post(
   },
 );
 
-/** POST /executions/:id/submit — gửi duyệt (COMPLETED -> PENDING_APPROVAL). */
+/** POST /executions/:id/submit — báo hoàn thành (D-16: IN_PROGRESS -> PENDING_APPROVAL; giữ COMPLETED cho tương thích cũ). */
 executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
   return withIdempotency(c, 'execution.submit', {}, async () => {
     const requestId = c.get('requestId') as string;
@@ -737,7 +707,12 @@ executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
     const { row } = loaded;
     // Quyền: người tạo lượt hoặc có execution.operate.
     if (row.created_by !== session.user_id && !permissions.has('execution.operate')) {
-      return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người tạo lượt mới được gửi duyệt.', requestId) };
+      return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người tạo lượt mới được báo hoàn thành.', requestId) };
+    }
+    // D-16: báo hoàn thành yêu cầu mọi bước bắt buộc đã DONE (logic chuyển từ /complete cũ).
+    const steps = await getExecutionSteps(c.env.DB, row.id);
+    if (!allRequiredStepsDone(steps.map((s) => ({ required: s.required === 1, state: s.state as 'PENDING' | 'IN_PROGRESS' | 'DONE' })))) {
+      return { status: 400, body: errorBody('STEPS_INCOMPLETE', 'Còn bước bắt buộc chưa hoàn thành.', requestId) };
     }
     const now = new Date().toISOString();
     const res = await doTransition(c.env.DB, row, session, requestId, 'PENDING_APPROVAL', 'execution.submit', {
@@ -745,7 +720,7 @@ executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
       binds: [session.user_id, now],
     });
     if (res.status === 200) {
-      // D-15: thông báo 2 chiều — báo cho người duyệt (supervisor; không có -> senior).
+      // D-15/D-16: thông báo 2 chiều — báo cho người duyệt (supervisor; không có -> senior).
       const approverIds = row.supervisor_id
         ? [row.supervisor_id]
         : await listSeniorApproverIds(c.env.DB);
@@ -753,8 +728,8 @@ executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
         if (uid === session.user_id) continue;
         await createNotification(
           c.env.DB, uid, 'execution.submitted',
-          `Lượt ${row.code} đã được gửi duyệt`,
-          `Người gửi: ${session.display_name ?? session.username}`,
+          `Lượt ${row.code} đã báo hoàn thành`,
+          `Người báo: ${session.display_name ?? session.username}`,
           'execution', row.id,
         );
       }
@@ -763,7 +738,7 @@ executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
   });
 });
 
-/** POST /executions/:id/cancel-submit — hủy gửi duyệt (PENDING_APPROVAL -> COMPLETED). */
+/** POST /executions/:id/cancel-submit — hủy báo hoàn thành (D-16: PENDING_APPROVAL -> IN_PROGRESS). */
 executionApp.post('/executions/:id/cancel-submit', requireAuth, async (c) => {
   return withIdempotency(c, 'execution.cancel-submit', {}, async () => {
     const requestId = c.get('requestId') as string;
@@ -772,11 +747,11 @@ executionApp.post('/executions/:id/cancel-submit', requireAuth, async (c) => {
     const loaded = await loadExecutionForTransition(c, requestId);
     if ('status' in loaded) return loaded;
     const { row } = loaded;
-    // Chỉ người đã gửi hoặc senior được hủy.
+    // Chỉ người đã báo hoặc senior được hủy.
     if (row.approval_requested_by !== session.user_id && !senior) {
-      return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người đã gửi duyệt mới được hủy.', requestId) };
+      return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người đã báo hoàn thành mới được hủy.', requestId) };
     }
-    return doTransition(c.env.DB, row, session, requestId, 'COMPLETED', 'execution.cancel-submit', {
+    return doTransition(c.env.DB, row, session, requestId, 'IN_PROGRESS', 'execution.cancel-submit', {
       setSql: 'approval_requested_by = NULL, approval_requested_at = NULL, approval_note = NULL',
       binds: [],
     });
@@ -813,13 +788,13 @@ executionApp.post('/executions/:id/approve', requireAuth, async (c) => {
       binds: [session.user_id, now],
     });
     if (res.status === 200) {
-      // D-15: báo cho người đã gửi duyệt (fallback người tạo).
+      // D-15/D-16: báo cho người đã báo hoàn thành (fallback người tạo).
       const target = row.approval_requested_by ?? row.created_by;
       if (target !== session.user_id) {
         await createNotification(
           c.env.DB, target, 'execution.approved',
-          `Lượt ${row.code} đã được duyệt`,
-          `Người duyệt: ${session.display_name ?? session.username}`,
+          `Lượt ${row.code} đã được xác nhận hoàn thành`,
+          `Người xác nhận: ${session.display_name ?? session.username}`,
           'execution', row.id,
         );
       }
@@ -828,7 +803,7 @@ executionApp.post('/executions/:id/approve', requireAuth, async (c) => {
   });
 });
 
-/** POST /executions/:id/reject — từ chối duyệt (PENDING_APPROVAL -> COMPLETED, lý do bắt buộc). */
+/** POST /executions/:id/reject — từ chối xác nhận (D-16: PENDING_APPROVAL -> IN_PROGRESS, lý do bắt buộc). */
 executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
   const body = await parseJson<RejectApprovalBody>(c);
   return withIdempotency(c, 'execution.reject', body, async () => {
@@ -842,20 +817,20 @@ executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
     }
     const reason = (body?.reason ?? '').trim();
     if (!reason) {
-      return { status: 400, body: errorBody('REASON_REQUIRED', 'Từ chối duyệt phải ghi rõ lý do.', requestId) };
+      return { status: 400, body: errorBody('REASON_REQUIRED', 'Từ chối xác nhận phải ghi rõ lý do.', requestId) };
     }
     const now = new Date().toISOString();
-    const res = await doTransition(c.env.DB, row, session, requestId, 'COMPLETED', 'execution.reject', {
+    const res = await doTransition(c.env.DB, row, session, requestId, 'IN_PROGRESS', 'execution.reject', {
       setSql: 'approved_by = ?3, approved_at = ?4, approval_note = ?5',
       binds: [session.user_id, now, reason],
     });
     if (res.status === 200) {
-      // D-15: báo cho người đã gửi duyệt (fallback người tạo).
+      // D-15/D-16: báo cho người đã báo hoàn thành (fallback người tạo).
       const target = row.approval_requested_by ?? row.created_by;
       if (target !== session.user_id) {
         await createNotification(
           c.env.DB, target, 'execution.rejected',
-          `Lượt ${row.code} bị từ chối duyệt`,
+          `Lượt ${row.code} bị từ chối xác nhận`,
           `Lý do: ${reason}`,
           'execution', row.id,
         );
