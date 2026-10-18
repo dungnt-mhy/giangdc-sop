@@ -3,7 +3,7 @@
  * Dùng fake D1Database tối thiểu — kiểm tra SQL/bind và mapping DTO.
  */
 import { describe, expect, it } from 'vitest';
-import { addExecutionReview, listExecutionReviews } from './executionDb.js';
+import { addExecutionReview, lastRejectKindOf, listExecutionReviews } from './executionDb.js';
 
 interface RecordedCall {
   sql: string;
@@ -116,5 +116,21 @@ describe('listExecutionReviews', () => {
     ]);
     const reviews = await listExecutionReviews(db, 'ex-1');
     expect(reviews[0].stepIds).toBeNull();
+  });
+});
+
+describe('lastRejectKindOf (D-21b)', () => {
+  it('reject theo bước -> "steps"', () => {
+    expect(lastRejectKindOf([{ action: 'reject', stepIds: ['s2'] }])).toBe('steps');
+  });
+  it('reject cả lượt (stepIds null) -> "all"', () => {
+    expect(lastRejectKindOf([{ action: 'reject', stepIds: null }])).toBe('all');
+  });
+  it('review gần nhất không phải reject -> null', () => {
+    expect(lastRejectKindOf([{ action: 'approve', stepIds: null }])).toBeNull();
+    expect(lastRejectKindOf([{ action: 'submit', stepIds: ['s1'] }])).toBeNull();
+  });
+  it('không có review -> null', () => {
+    expect(lastRejectKindOf([])).toBeNull();
   });
 });
