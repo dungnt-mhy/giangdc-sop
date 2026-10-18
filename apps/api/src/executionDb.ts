@@ -348,6 +348,8 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
   const latest = reviews[0];
   const rejectedStepCount =
     latest && latest.action === 'reject' && latest.stepIds ? latest.stepIds.length : 0;
+  // D-21b: loại reject gần nhất để danh sách hiện badge đồng nhất (cả lượt + theo bước).
+  const lastRejectKind = lastRejectKindOf(reviews);
   return {
     id: row.id,
     code: row.code,
@@ -381,6 +383,7 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     startedAt: row.started_at,
     reviews,
     rejectedStepCount,
+    lastRejectKind,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [], redoCountByStep.get(s.id) ?? 0)),
@@ -407,6 +410,18 @@ function parseStepIds(raw: string | null): string[] | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * D-21b: loại reject của review gần nhất (để danh sách hiện badge đồng nhất):
+ * 'steps' = từ chối theo bước (có stepIds), 'all' = từ chối cả lượt, null = không phải reject.
+ */
+export function lastRejectKindOf(
+  reviews: Pick<ExecutionReviewDto, 'action' | 'stepIds'>[],
+): 'steps' | 'all' | null {
+  const latest = reviews[0];
+  if (!latest || latest.action !== 'reject') return null;
+  return latest.stepIds ? 'steps' : 'all';
 }
 
 function toExecutionReviewDto(r: ExecutionReviewRow): ExecutionReviewDto {
