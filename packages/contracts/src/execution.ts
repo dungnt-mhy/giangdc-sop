@@ -67,12 +67,29 @@ export interface ExecutionDto {
   orgUnitId: string | null;
   orgUnitName: string | null;
   note: string | null;
+  /** D-14: tiêu đề lượt (tên gọi). */
+  title: string | null;
+  /** D-14: ngày thực hiện (YYYY-MM-DD). */
+  executionDate: string | null;
+  /** D-14: giờ thực hiện (HH:MM). */
+  executionTime: string | null;
+  /** D-14: ca làm việc. */
+  shift: ExecutionShift | null;
   createdBy: string;
   createdByName: string | null;
+  /** D-14: người thực hiện chính. */
+  mainPerformerId: string | null;
+  mainPerformerName: string | null;
+  /** D-14: người giám sát. */
+  supervisorId: string | null;
+  supervisorName: string | null;
   createdAt: string;
   updatedAt: string;
   steps: ExecutionStepDto[];
 }
+
+/** D-14: ca làm việc. */
+export type ExecutionShift = 'SANG' | 'CHIEU' | 'TOI';
 
 /* ---------- Request bodies ---------- */
 
@@ -89,5 +106,27 @@ export interface CreateExecutionBody {
   processVersionId: string;
   orgUnitId?: string | null;
   note?: string | null;
-  assignments: StepAssignmentBody[];
+  /** D-14: phân công từng bước KHÔNG bắt buộc — bước thiếu gán = "chưa phân công". */
+  assignments?: StepAssignmentBody[];
+  /** D-14: tiêu đề lượt. */
+  title?: string | null;
+  /** D-14: ngày thực hiện YYYY-MM-DD (mặc định = hôm nay phía server). */
+  executionDate?: string | null;
+  /** D-14: giờ thực hiện HH:MM. */
+  executionTime?: string | null;
+  /** D-14: ca làm việc. */
+  shift?: ExecutionShift | null;
+  /** D-14: người chịu trách nhiệm tạo lượt (mặc định = người gọi API). */
+  createdBy?: string | null;
+  /** D-14: người thực hiện chính. */
+  mainPerformerId?: string | null;
+  /** D-14: người giám sát. */
+  supervisorId?: string | null;
+}
+
+/** D-14: body phân công bước sau khi tạo lượt. */
+export interface AssignStepBody {
+  /** user được gán thực hiện (phải có chức vụ khớp "Vai trò thực hiện" nếu bước có định nghĩa). */
+  performerUserId: string;
+  supervisorUserId?: string | null;
 }
