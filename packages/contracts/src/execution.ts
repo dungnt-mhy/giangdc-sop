@@ -55,6 +55,8 @@ export interface ExecutionStepDto {
   /** Snapshot chính sách bỏ qua tại lúc tạo lượt (PRC-007). */
   skip: SkipPolicyDto;
   evidence: EvidenceDto[];
+  /** D-21: số lần bước bị trả làm lại (từ nhật ký reject theo bước). */
+  redoCount: number;
 }
 
 export interface ExecutionDto {
@@ -99,6 +101,8 @@ export interface ExecutionDto {
   startedAt: string | null;
   /** D-18: nhật ký duyệt — mới nhất trước. */
   reviews: ExecutionReviewDto[];
+  /** D-21: số bước bị trả làm lại ở lần reject gần nhất (0 nếu không phải reject theo bước). */
+  rejectedStepCount: number;
   createdAt: string;
   updatedAt: string;
   steps: ExecutionStepDto[];
@@ -114,6 +118,8 @@ export interface ExecutionReviewDto {
   actorId: string;
   actorName: string | null;
   reason: string | null;
+  /** D-21: id các bước bị trả làm lại (JSON); null = từ chối toàn bộ lượt. */
+  stepIds: string[] | null;
   createdAt: string;
 }
 
@@ -168,9 +174,13 @@ export interface AssignStepBody {
   supervisorUserId?: string | null;
 }
 
-/** D-15: body từ chối duyệt (lý do bắt buộc). */
+/** D-15: body từ chối duyệt (lý do bắt buộc). D-21: thêm mode từ chối theo bước. */
 export interface RejectApprovalBody {
   reason: string;
+  /** D-21: 'all' = trả toàn bộ lượt (mặc định, tương thích cũ); 'steps' = chỉ trả các bước được chọn. */
+  mode?: 'all' | 'steps';
+  /** D-21: id các bước DONE cần làm lại (bắt buộc khi mode='steps'). */
+  stepIds?: string[];
 }
 
 /* ---------- Notifications (D-15) ---------- */
