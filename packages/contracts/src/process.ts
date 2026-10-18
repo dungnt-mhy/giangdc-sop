@@ -74,6 +74,10 @@ export interface ProcessVersionDto {
   revision: number;
   createdAt: string;
   updatedAt: string;
+  /** D-20b: thời điểm hủy bỏ bản (ISO); null = chưa hủy. "Đã hủy" KHÔNG phải state. */
+  voidedAt: string | null;
+  /** D-20b: lý do hủy bỏ bản. */
+  voidReason: string | null;
 }
 
 export interface ProcessStepDto {
