@@ -5,15 +5,17 @@
 import { Hono } from 'hono';
 import {
   allRequiredStepsDone,
-  assigneeMatchesPositions,
   canStepTransition,
   canTransition,
+  checkStepAssignees,
   generateExecutionCode,
   hasScope,
+  normalizeExecutionCreate,
   photoRequired,
   type Permission,
 } from '@giangdc-sop/domain';
 import type {
+  AssignStepBody,
   CreateExecutionBody,
   ExecutionDto,
 } from '@giangdc-sop/contracts';
@@ -98,7 +100,65 @@ async function checkExecutionScope(
   };
 }
 
-/** POST /executions — tạo lượt từ bản ACTIVE (BR-014: Idempotency-Key bắt buộc). */
+/** Kết quả kiểm tra người được gán (dùng chung cho tạo lượt và phân công bước). */
+type AssigneeCheckResult = { ok: true } | { ok: false; code: string; message: string };
+
+/**
+ * Kiểm tra user tồn tại/đang hoạt động + khớp chức vụ của bước (D-09/D-12/D-14).
+ * need.*Names dùng để báo lỗi thân thiện.
+ */
+async function checkAssignees(
+  db: D1Database,
+  need: { performerIds: string[]; performerNames: string; supervisorIds: string[]; supervisorNames: string },
+  performerUserId: string,
+  supervisorUserId: string | null | undefined,
+  stepCode: string,
+): Promise<AssigneeCheckResult> {
+  const performer = await findActiveUser(db, performerUserId);
+  if (!performer) {
+    return { ok: false, code: 'UNKNOWN_USER', message: `Người thực hiện không tồn tại/không hoạt động: ${performerUserId}.` };
+  }
+  let supervisor: { id: string; display_name: string } | null = null;
+  if (supervisorUserId) {
+    supervisor = await findActiveUser(db, supervisorUserId);
+    if (!supervisor) {
+      return { ok: false, code: 'UNKNOWN_USER', message: `Người giám sát không tồn tại/không hoạt động: ${supervisorUserId}.` };
+    }
+  }
+  const performerPos = await getUserPositionIds(db, performerUserId);
+  const supervisorPos = supervisor ? await getUserPositionIds(db, supervisor.id) : null;
+  const check = checkStepAssignees(need.performerIds, need.supervisorIds, performerPos, supervisorPos);
+  if (!check.performerOk) {
+    return {
+      ok: false,
+      code: 'ASSIGNEE_POSITION_MISMATCH',
+      message: `Người thực hiện bước ${stepCode} phải giữ chức vụ: ${need.performerNames || '—'}.`,
+    };
+  }
+  if (supervisor && !check.supervisorOk) {
+    return {
+      ok: false,
+      code: 'ASSIGNEE_POSITION_MISMATCH',
+      message: `Người giám sát bước ${stepCode} phải giữ chức vụ: ${need.supervisorNames || '—'}.`,
+    };
+  }
+  return { ok: true };
+}
+
+/** Kiểm tra user id (nếu có) tồn tại và đang hoạt động — dùng cho createdBy/mainPerformer/supervisor. */
+async function checkOptionalUser(
+  db: D1Database,
+  userId: string | null,
+  label: string,
+): Promise<AssigneeCheckResult> {
+  if (!userId) return { ok: true };
+  const u = await findActiveUser(db, userId);
+  return u
+    ? { ok: true }
+    : { ok: false, code: 'UNKNOWN_USER', message: `${label} không tồn tại/không hoạt động: ${userId}.` };
+}
+
+/** POST /executions — tạo lượt từ bản ACTIVE (D-14: form đơn giản; BR-014: Idempotency-Key bắt buộc). */
 executionApp.post('/executions', requireAuth, requirePermission('execution.create' as Permission), async (c) => {
   const body = await parseJson<CreateExecutionBody>(c);
   return withIdempotency(c, 'execution.create', body, async () => {
@@ -127,15 +187,25 @@ executionApp.post('/executions', requireAuth, requirePermission('execution.creat
     const orgUnitId = body.orgUnitId ?? process?.orgUnitId ?? null;
     const scopeCheck = await checkExecutionScope(c, orgUnitId, `new:${version.id}`);
     if (!scopeCheck.ok) return { status: 403, body: scopeCheck.response };
-    // Assignments phải phủ toàn bộ bước.
+    // D-14: chuẩn hóa trường mới (ngày mặc định hôm nay, người tạo mặc định người gọi).
+    const todayYmd = new Date().toISOString().slice(0, 10);
+    const normalized = normalizeExecutionCreate(body, session.user_id, todayYmd);
+    if (!normalized.ok) {
+      return { status: 400, body: errorBody(normalized.code, normalized.message, requestId) };
+    }
+    const n = normalized.value;
+    for (const [uid, label] of [
+      [n.createdBy, 'Người tạo'],
+      [n.mainPerformerId, 'Người thực hiện chính'],
+      [n.supervisorId, 'Người giám sát'],
+    ] as const) {
+      const uc = await checkOptionalUser(db, uid, label);
+      if (!uc.ok) return { status: 400, body: errorBody(uc.code, uc.message, requestId) };
+    }
+    // D-14: assignments KHÔNG bắt buộc — bước thiếu gán = "chưa phân công" (NULL).
     const assignments = body.assignments ?? [];
     const stepById = new Map(versionSteps.map((s) => [s.id, s]));
-    if (assignments.length !== versionSteps.length) {
-      return {
-        status: 400,
-        body: errorBody('ASSIGNMENTS_INCOMPLETE', `Phải gán người cho toàn bộ ${versionSteps.length} bước.`, requestId),
-      };
-    }
+    const assignByStepId = new Map<string, (typeof assignments)[number]>();
     const seenSteps = new Set<string>();
     for (const a of assignments) {
       const step = stepById.get(a.stepId);
@@ -146,32 +216,22 @@ executionApp.post('/executions', requireAuth, requirePermission('execution.creat
         return { status: 400, body: errorBody('DUPLICATE_ASSIGNMENT', `Bước bị gán trùng: ${step.code}.`, requestId) };
       }
       seenSteps.add(a.stepId);
-      const performer = await findActiveUser(db, a.performerUserId);
-      if (!performer) {
-        return { status: 400, body: errorBody('UNKNOWN_USER', `Người thực hiện không tồn tại/không hoạt động: ${a.performerUserId}.`, requestId) };
+      const check = await checkAssignees(
+        db,
+        {
+          performerIds: step.performerPositions.map((p) => p.id),
+          performerNames: step.performerPositions.map((p) => p.name).join(', '),
+          supervisorIds: step.supervisorPositions.map((p) => p.id),
+          supervisorNames: step.supervisorPositions.map((p) => p.name).join(', '),
+        },
+        a.performerUserId,
+        a.supervisorUserId ?? null,
+        step.code,
+      );
+      if (!check.ok) {
+        return { status: 400, body: errorBody(check.code, check.message, requestId) };
       }
-      const performerPos = await getUserPositionIds(db, a.performerUserId);
-      const needPerformerPos = step.performerPositions.map((p) => p.id);
-      if (!assigneeMatchesPositions(needPerformerPos, performerPos)) {
-        return {
-          status: 400,
-          body: errorBody('ASSIGNEE_POSITION_MISMATCH', `Người thực hiện bước ${step.code} phải giữ chức vụ: ${step.performerPositions.map((p) => p.name).join(', ') || '—'}.`, requestId),
-        };
-      }
-      if (a.supervisorUserId) {
-        const supervisor = await findActiveUser(db, a.supervisorUserId);
-        if (!supervisor) {
-          return { status: 400, body: errorBody('UNKNOWN_USER', `Người giám sát không tồn tại/không hoạt động: ${a.supervisorUserId}.`, requestId) };
-        }
-        const supervisorPos = await getUserPositionIds(db, a.supervisorUserId);
-        const needSupervisorPos = step.supervisorPositions.map((p) => p.id);
-        if (!assigneeMatchesPositions(needSupervisorPos, supervisorPos)) {
-          return {
-            status: 400,
-            body: errorBody('ASSIGNEE_POSITION_MISMATCH', `Người giám sát bước ${step.code} phải giữ chức vụ: ${step.supervisorPositions.map((p) => p.name).join(', ') || '—'}.`, requestId),
-          };
-        }
-      }
+      assignByStepId.set(a.stepId, a);
     }
     // Sinh mã lượt duy nhất.
     let code = '';
@@ -187,8 +247,9 @@ executionApp.post('/executions', requireAuth, requirePermission('execution.creat
     }
     const executionId = newId();
     const now = new Date().toISOString();
-    const stepInserts = assignments.map((a) => {
-      const step = stepById.get(a.stepId)!;
+    // D-14: snapshot TOÀN BỘ bước của bản; bước thiếu gán = NULL ("chưa phân công").
+    const stepInserts = versionSteps.map((step) => {
+      const a = assignByStepId.get(step.id);
       return db.prepare(
         `INSERT INTO execution_steps
            (id, execution_id, version_step_id, step_code, title, sort_order, state, required,
@@ -196,18 +257,23 @@ executionApp.post('/executions', requireAuth, requirePermission('execution.creat
          VALUES (?1,?2,?3,?4,?5,?6,'PENDING',?7,?8,?9,?10,?11)`,
       ).bind(
         newId(), executionId, step.id, step.code, step.title, step.sortOrder,
-        step.required ? 1 : 0, a.performerUserId, a.supervisorUserId ?? null,
+        step.required ? 1 : 0, a?.performerUserId ?? null, a?.supervisorUserId ?? null,
         JSON.stringify(step.completion ?? []),
         JSON.stringify(step.skip ?? { allowed: false, allowedPositions: [], reasonRequired: true, approvalLevel: null }),
       );
     });
     await db.batch([
       db.prepare(
-        `INSERT INTO executions (id, code, process_id, version_id, state, org_unit_id, note, created_by, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,'CREATED',?5,?6,?7,?8,?8)`,
+        `INSERT INTO executions (id, code, process_id, version_id, state, org_unit_id, note,
+           title, execution_date, execution_time, shift, main_performer_id, supervisor_id,
+           created_by, created_at, updated_at)
+         VALUES (?1,?2,?3,?4,'CREATED',?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?14)`,
       ).bind(
         executionId, code, version.processId, version.id,
-        orgUnitId, body.note?.trim() || null, session.user_id, now,
+        orgUnitId, body.note?.trim() || null,
+        n.title, n.executionDate, n.executionTime, n.shift,
+        n.mainPerformerId, n.supervisorId,
+        n.createdBy, now,
       ),
       ...stepInserts,
     ]);
@@ -220,6 +286,76 @@ executionApp.post('/executions', requireAuth, requirePermission('execution.creat
     return { status: 201, body: { execution } };
   });
 });
+
+/**
+ * POST /executions/:id/steps/:stepId/assign — phân công người cho bước (D-14).
+ * Dùng sau khi tạo lượt (bước "chưa phân công"). Tái kiểm tra chức vụ như lúc tạo.
+ * Quyền execution.operate (như start/complete); Idempotency-Key bắt buộc.
+ */
+executionApp.post(
+  '/executions/:id/steps/:stepId/assign',
+  requireAuth,
+  requirePermission('execution.operate' as Permission),
+  async (c) => {
+    const body = await parseJson<AssignStepBody>(c);
+    return withIdempotency(c, 'execution.step.assign', body, async () => {
+      const requestId = c.get('requestId') as string;
+      const session = c.get('session') as AuthSession;
+      const db = c.env.DB;
+      const row = await findExecution(db, c.req.param('id'));
+      if (!row) {
+        return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId) };
+      }
+      const scopeCheck = await checkExecutionScope(c, row.org_unit_id, row.id);
+      if (!scopeCheck.ok) return { status: 403, body: scopeCheck.response };
+      if (row.state === 'COMPLETED' || row.state === 'CANCELLED') {
+        return { status: 409, body: errorBody('EXECUTION_STATE_INVALID', `Lượt ở trạng thái ${row.state}, không thể phân công.`, requestId) };
+      }
+      const step = await findExecutionStep(db, row.id, c.req.param('stepId'));
+      if (!step) {
+        return { status: 404, body: errorBody('STEP_NOT_FOUND', 'Không tìm thấy bước trong lượt này.', requestId) };
+      }
+      if (step.state === 'DONE') {
+        return { status: 409, body: errorBody('STEP_STATE_INVALID', 'Bước đã hoàn thành, không thể đổi người được gán.', requestId) };
+      }
+      if (!body || !body.performerUserId) {
+        return { status: 400, body: errorBody('INVALID_REQUEST', 'Thiếu performerUserId.', requestId) };
+      }
+      // Yêu cầu chức vụ lấy từ bản quy trình (khớp theo step_code).
+      const versionSteps = await getVersionSteps(db, row.version_id);
+      const vStep = versionSteps.find((s) => s.code === step.step_code);
+      const check = await checkAssignees(
+        db,
+        {
+          performerIds: vStep?.performerPositions.map((p) => p.id) ?? [],
+          performerNames: vStep?.performerPositions.map((p) => p.name).join(', ') ?? '',
+          supervisorIds: vStep?.supervisorPositions.map((p) => p.id) ?? [],
+          supervisorNames: vStep?.supervisorPositions.map((p) => p.name).join(', ') ?? '',
+        },
+        body.performerUserId,
+        body.supervisorUserId ?? null,
+        step.step_code,
+      );
+      if (!check.ok) {
+        return { status: 400, body: errorBody(check.code, check.message, requestId) };
+      }
+      await db.prepare(
+        `UPDATE execution_steps SET performer_user_id = ?1, supervisor_user_id = ?2 WHERE id = ?3`,
+      ).bind(body.performerUserId, body.supervisorUserId ?? null, step.id).run();
+      await writeAudit(db, {
+        id: newId(), actorId: session.user_id, action: 'execution.step_assign',
+        objectType: 'execution_step', objectId: step.id,
+        reason: `${row.code}/${step.step_code} → ${body.performerUserId}`, requestId,
+      });
+      const updated = await findExecutionStep(db, row.id, step.id);
+      const evRows = updated ? await listEvidenceForSteps(db, [updated.id]) : [];
+      return {
+        status: 200,
+        body: { step: updated ? toExecutionStepDto(updated, evRows.map(toEvidenceDto)) : null },
+      };
+    });
+  },
+);
 
 /** GET /executions — danh sách (lọc scope; ?mine=1 chỉ lượt có bước gán cho tôi). */
 executionApp.get('/executions', requireAuth, requirePermission('execution.view' as Permission), async (c) => {
