@@ -104,7 +104,7 @@ export interface ExecutionCreateInput {
 }
 
 export interface NormalizedExecutionCreate {
-  title: string | null;
+  title: string;
   /** YYYY-MM-DD. */
   executionDate: string;
   /** HH:MM. */
@@ -118,7 +118,7 @@ export interface NormalizedExecutionCreate {
 
 export interface NormalizeError {
   ok: false;
-  code: 'INVALID_EXECUTION_DATE' | 'INVALID_EXECUTION_TIME' | 'INVALID_SHIFT';
+  code: 'TITLE_REQUIRED' | 'INVALID_EXECUTION_DATE' | 'INVALID_EXECUTION_TIME' | 'INVALID_SHIFT';
   message: string;
 }
 
@@ -138,6 +138,14 @@ export function normalizeExecutionCreate(
     const t = (v ?? '').trim();
     return t === '' ? null : t;
   };
+  const title = trimOrNull(body.title);
+  if (title === null) {
+    return {
+      ok: false,
+      code: 'TITLE_REQUIRED',
+      message: 'Tiêu đề lượt là bắt buộc.',
+    };
+  }
   const executionDate = trimOrNull(body.executionDate) ?? todayYmd;
   if (!DATE_RE.test(executionDate)) {
     return {
@@ -165,7 +173,7 @@ export function normalizeExecutionCreate(
   return {
     ok: true,
     value: {
-      title: trimOrNull(body.title),
+      title,
       executionDate,
       executionTime,
       shift: shiftRaw,
