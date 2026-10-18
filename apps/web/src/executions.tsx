@@ -63,7 +63,7 @@ async function apiForm<T>(path: string, form: FormData): Promise<T> {
     method: 'POST',
     credentials: 'include',
     body: form,
-    headers: { 'X-Idempotency-Key': newIdemKey() },
+    headers: { 'Idempotency-Key': newIdemKey() },
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -334,7 +334,7 @@ function StepWorkCard({
     try {
       await api(`/executions/${executionId}/steps/${step.id}/${action}`, {
         method: 'POST',
-        headers: { 'X-Idempotency-Key': newIdemKey() },
+        headers: { 'Idempotency-Key': newIdemKey() },
       });
       onChanged();
     } catch (e) {
@@ -442,7 +442,7 @@ export function ExecutionDetail({
     try {
       const d = (await api(`/executions/${ex.id}/${action}`, {
         method: 'POST',
-        headers: { 'X-Idempotency-Key': newIdemKey() },
+        headers: { 'Idempotency-Key': newIdemKey() },
       })) as { execution: ExecutionDto };
       setEx(d.execution);
     } catch (e) {
@@ -651,7 +651,7 @@ function CreateExecutionForm({
       };
       const d = (await api('/executions', {
         method: 'POST',
-        headers: { 'X-Idempotency-Key': newIdemKey() },
+        headers: { 'Idempotency-Key': newIdemKey() },
         body: JSON.stringify(body),
       })) as { execution: { id: string } };
       onDone(d.execution.id);
