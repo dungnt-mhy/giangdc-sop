@@ -3,6 +3,8 @@ import { ProcessesView } from './processes.js';
 import { ExecutionsView } from './executions.js';
 import { AdminView } from './admin.js';
 import { ReportsView } from './reports.js';
+import { EvidenceView } from './evidence.js';
+import { ExceptionsView } from './exceptions.js';
 import { parseHash, setHash } from './hashRoute.js';
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -339,8 +341,8 @@ const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?:
   { key: 'overview', label: 'Tổng quan', ico: '◉', live: true },
   { key: 'processes', label: 'Danh mục Quy trình', ico: '◈', live: true },
   { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: true },
-  { key: 'evidence', label: 'Bằng chứng', ico: '▣', live: false, tag: 'T4' },
-  { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: false, tag: 'T5' },
+  { key: 'evidence', label: 'Bằng chứng', ico: '▣', live: true, perm: 'execution.view' },
+  { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: true, perm: 'execution.view' },
   // T6: chỉ hiện khi có quyền execution.view.
   { key: 'report', label: 'Báo cáo', ico: '📊', live: true, perm: 'execution.view' },
   // T7: chỉ hiện khi có quyền user.manage.
@@ -371,16 +373,16 @@ const MODULES: { name: string; desc: string; live: boolean; tag: string; ico: st
   },
   {
     name: 'Bằng chứng',
-    desc: 'Thu thập, quét mã độc và lưu trữ bằng chứng theo từng bước.',
-    live: false,
-    tag: 'Sắp có · T4',
+    desc: 'Thu thập và thống kê bằng chứng theo từng bước (7 loại: ảnh, tệp, trường dữ liệu, biểu mẫu, xác nhận, mã quét, ghi chú).',
+    live: true,
+    tag: 'Đang chạy',
     ico: '▣',
   },
   {
     name: 'Ngoại lệ',
-    desc: 'Ghi nhận, xử lý và phê duyệt ngoại lệ phát sinh khi thực hiện.',
-    live: false,
-    tag: 'Sắp có · T5',
+    desc: 'Ghi nhận, xử lý và thống kê ngoại lệ phát sinh khi thực hiện.',
+    live: true,
+    tag: 'Đang chạy',
     ico: '⚠',
   },
   {
@@ -404,6 +406,8 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
     if (r.nav === 'executions') return 'execution';
     if (r.nav === 'reports') return 'report';
     if (r.nav === 'admin') return 'admin';
+    if (r.nav === 'evidence') return 'evidence';
+    if (r.nav === 'exceptions') return 'exception';
     return 'overview';
   });
   const isSeniorApprover = me.roles.some((r) => r.seniorApprover);
@@ -416,6 +420,8 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
     if (r.nav === 'executions') return 'execution';
     if (r.nav === 'reports') return 'report';
     if (r.nav === 'admin') return 'admin';
+    if (r.nav === 'evidence') return 'evidence';
+    if (r.nav === 'exceptions') return 'exception';
     return 'overview';
   };
 
@@ -430,7 +436,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   }, []);
 
   /** Chuyển phân hệ + cập nhật hash (tránh vòng lặp: setHash chỉ đổi khi khác). */
-  const goNav = (key: 'overview' | 'processes' | 'execution' | 'report' | 'admin') => {
+  const goNav = (key: 'overview' | 'processes' | 'execution' | 'report' | 'admin' | 'evidence' | 'exception') => {
     setNav(key);
     setHash(
       key === 'overview'
@@ -441,7 +447,11 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
             ? '#/reports'
             : key === 'admin'
               ? '#/admin'
-              : '#/executions',
+              : key === 'evidence'
+                ? '#/evidence'
+                : key === 'exception'
+                  ? '#/exceptions'
+                  : '#/executions',
     );
     setDrawerOpen(false);
   };
@@ -550,6 +560,10 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
           <ReportsView />
         ) : nav === 'admin' ? (
           <AdminView userId={me.user.id} />
+        ) : nav === 'evidence' ? (
+          <EvidenceView onOpenExecution={(id) => { setHash(`#/executions/${id}`); }} />
+        ) : nav === 'exception' ? (
+          <ExceptionsView onOpenExecution={(id) => { setHash(`#/executions/${id}`); }} />
         ) : (
           <>
         <header className="topbar">
