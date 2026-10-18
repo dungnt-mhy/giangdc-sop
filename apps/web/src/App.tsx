@@ -1,6 +1,8 @@
 import React from 'react';
 import { ProcessesView } from './processes.js';
 import { ExecutionsView } from './executions.js';
+import { AdminView } from './admin.js';
+import { ReportsView } from './reports.js';
 import { parseHash, setHash } from './hashRoute.js';
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
@@ -333,13 +335,16 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
 }
 
 /* ---------------- Khung app sau đăng nhập ---------------- */
-const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string }[] = [
+const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string; perm?: string }[] = [
   { key: 'overview', label: 'Tổng quan', ico: '◉', live: true },
   { key: 'processes', label: 'Danh mục Quy trình', ico: '◈', live: true },
   { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: true },
   { key: 'evidence', label: 'Bằng chứng', ico: '▣', live: false, tag: 'T4' },
   { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: false, tag: 'T5' },
-  { key: 'report', label: 'Báo cáo', ico: '▤', live: false, tag: 'T6' },
+  // T6: chỉ hiện khi có quyền execution.view.
+  { key: 'report', label: 'Báo cáo', ico: '📊', live: true, perm: 'execution.view' },
+  // T7: chỉ hiện khi có quyền user.manage.
+  { key: 'admin', label: 'Quản trị', ico: '⚙', live: true, perm: 'user.manage' },
 ];
 
 const MODULES: { name: string; desc: string; live: boolean; tag: string; ico: string }[] = [
@@ -381,9 +386,9 @@ const MODULES: { name: string; desc: string; live: boolean; tag: string; ico: st
   {
     name: 'Báo cáo',
     desc: 'Tổng hợp tiến độ, xuất báo cáo và tra cứu nhật ký kiểm tra.',
-    live: false,
-    tag: 'Sắp có · T6',
-    ico: '▤',
+    live: true,
+    tag: 'Đang chạy',
+    ico: '📊',
   },
 ];
 
@@ -397,16 +402,27 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
     const r = parseHash();
     if (r.nav === 'processes') return 'processes';
     if (r.nav === 'executions') return 'execution';
+    if (r.nav === 'reports') return 'report';
+    if (r.nav === 'admin') return 'admin';
     return 'overview';
   });
   const isSeniorApprover = me.roles.some((r) => r.seniorApprover);
   const [pendingApproval, setPendingApproval] = React.useState(0);
+  // T6: menu Báo cáo chỉ hiện khi có quyền execution.view.
+  const visibleNavItems = NAV_ITEMS.filter((item) => !item.perm || me.permissions.includes(item.perm));
+
+  const hashToNav = (r: ReturnType<typeof parseHash>): string => {
+    if (r.nav === 'processes') return 'processes';
+    if (r.nav === 'executions') return 'execution';
+    if (r.nav === 'reports') return 'report';
+    if (r.nav === 'admin') return 'admin';
+    return 'overview';
+  };
 
   // Đồng bộ nav khi bấm back/forward của trình duyệt.
   React.useEffect(() => {
     const onHash = () => {
-      const r = parseHash();
-      const target = r.nav === 'processes' ? 'processes' : r.nav === 'executions' ? 'execution' : 'overview';
+      const target = hashToNav(parseHash());
       setNav((cur) => (cur === target ? cur : target));
     };
     window.addEventListener('hashchange', onHash);
@@ -414,9 +430,19 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   }, []);
 
   /** Chuyển phân hệ + cập nhật hash (tránh vòng lặp: setHash chỉ đổi khi khác). */
-  const goNav = (key: 'overview' | 'processes' | 'execution') => {
+  const goNav = (key: 'overview' | 'processes' | 'execution' | 'report' | 'admin') => {
     setNav(key);
-    setHash(key === 'overview' ? '#/' : key === 'processes' ? '#/processes' : '#/executions');
+    setHash(
+      key === 'overview'
+        ? '#/'
+        : key === 'processes'
+          ? '#/processes'
+          : key === 'report'
+            ? '#/reports'
+            : key === 'admin'
+              ? '#/admin'
+              : '#/executions',
+    );
     setDrawerOpen(false);
   };
 
@@ -466,13 +492,13 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
         </div>
         <nav>
           <div className="nav-label">Phân hệ</div>
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <button
               key={item.key}
               className={`nav-item${nav === item.key ? ' active' : ''}`}
               disabled={!item.live}
               title={item.live ? item.label : `${item.label} — sắp ra mắt`}
-              onClick={() => goNav(item.key as 'overview' | 'processes' | 'execution')}
+              onClick={() => goNav(item.key as 'overview' | 'processes' | 'execution' | 'report' | 'admin')}
             >
               <span className="ico">{item.ico}</span>
               {item.label}
@@ -520,6 +546,10 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
             userId={me.user.id}
             isSeniorApprover={isSeniorApprover}
           />
+        ) : nav === 'report' ? (
+          <ReportsView />
+        ) : nav === 'admin' ? (
+          <AdminView userId={me.user.id} />
         ) : (
           <>
         <header className="topbar">
