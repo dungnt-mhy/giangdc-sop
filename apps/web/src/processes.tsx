@@ -14,6 +14,7 @@ import type {
   ValidationIssueDto,
 } from '@giangdc-sop/contracts';
 import { api } from './App.js';
+import { parseHash, setHash } from './hashRoute.js';
 
 const STATE_LABEL: Record<ProcessVersionState, string> = {
   DRAFT: 'Nháp',
@@ -1408,8 +1409,81 @@ type ProcView =
   | { name: 'edit'; version: ProcessVersionDto; processId: string }
   | { name: 'review'; version: ProcessVersionDto; processId: string };
 
+/** ProcView → hash (đồng bộ điều hướng với URL để refresh không mất trang). */
+function viewToHash(v: ProcView): string {
+  switch (v.name) {
+    case 'list':
+      return '#/processes';
+    case 'detail':
+      return `#/processes/${v.processId}`;
+    case 'edit':
+      return `#/processes/${v.processId}/edit/${v.version.id}`;
+    case 'review':
+      return `#/processes/${v.processId}/review/${v.version.id}`;
+  }
+}
+
 export function ProcessesView({ perms }: { perms: string[] }) {
   const [view, setView] = React.useState<ProcView>({ name: 'list' });
+  const [hashLoading, setHashLoading] = React.useState(false);
+  const viewRef = React.useRef(view);
+  viewRef.current = view;
+
+  /** Đổi view + cập nhật hash (setHash đã tránh vòng lặp khi hash không đổi). */
+  const goView = React.useCallback((v: ProcView) => {
+    viewRef.current = v;
+    setView(v);
+    setHash(viewToHash(v));
+  }, []);
+
+  // Khôi phục view từ hash: khi mount (refresh trình duyệt) và khi back/forward.
+  React.useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      const r = parseHash();
+      if (r.nav !== 'processes') return;
+      // Hash do chính goView vừa gán → bỏ qua, tránh vòng lặp.
+      if (window.location.hash === viewToHash(viewRef.current)) return;
+      if (!r.processId) {
+        goView({ name: 'list' });
+        return;
+      }
+      if ((r.mode === 'edit' || r.mode === 'review') && r.versionId) {
+        setHashLoading(true);
+        try {
+          const d = (await api(`/versions/${r.versionId}`)) as { version: ProcessVersionDto };
+          if (!cancelled) goView({ name: r.mode, version: d.version, processId: r.processId });
+        } catch {
+          // Version không tồn tại → về chi tiết quy trình.
+          if (!cancelled) goView({ name: 'detail', processId: r.processId as string });
+        } finally {
+          if (!cancelled) setHashLoading(false);
+        }
+      } else {
+        goView({ name: 'detail', processId: r.processId });
+      }
+    };
+    restore();
+    window.addEventListener('hashchange', restore);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('hashchange', restore);
+    };
+  }, [goView]);
+
+  if (hashLoading) {
+    return (
+      <div>
+        <header className="topbar">
+          <div>
+            <div className="crumb">Trang chủ <span> / </span> <strong>Danh mục Quy trình</strong></div>
+            <h2 className="page-title">Danh mục Quy trình</h2>
+          </div>
+        </header>
+        <div className="empty">Đang tải…</div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -1423,30 +1497,30 @@ export function ProcessesView({ perms }: { perms: string[] }) {
       </header>
 
       {view.name === 'list' && (
-        <ProcessList perms={perms} onOpen={(id) => setView({ name: 'detail', processId: id })} />
+        <ProcessList perms={perms} onOpen={(id) => goView({ name: 'detail', processId: id })} />
       )}
       {view.name === 'detail' && (
         <ProcessDetail
           perms={perms}
           processId={view.processId}
-          onBack={() => setView({ name: 'list' })}
-          onEditVersion={(v) => setView({ name: 'edit', version: v, processId: view.processId })}
-          onReviewVersion={(v) => setView({ name: 'review', version: v, processId: view.processId })}
+          onBack={() => goView({ name: 'list' })}
+          onEditVersion={(v) => goView({ name: 'edit', version: v, processId: view.processId })}
+          onReviewVersion={(v) => goView({ name: 'review', version: v, processId: view.processId })}
         />
       )}
       {view.name === 'edit' && (
         <VersionEditor
           version={view.version}
-          onBack={() => setView({ name: 'detail', processId: view.processId })}
-          onSubmitted={(v) => setView({ name: 'review', version: v, processId: view.processId })}
+          onBack={() => goView({ name: 'detail', processId: view.processId })}
+          onSubmitted={(v) => goView({ name: 'review', version: v, processId: view.processId })}
         />
       )}
       {view.name === 'review' && (
         <VersionReview
           version={view.version}
           perms={perms}
-          onBack={() => setView({ name: 'detail', processId: view.processId })}
-          onChanged={(v) => setView({ name: 'review', version: v, processId: view.processId })}
+          onBack={() => goView({ name: 'detail', processId: view.processId })}
+          onChanged={(v) => goView({ name: 'review', version: v, processId: view.processId })}
         />
       )}
     </div>
