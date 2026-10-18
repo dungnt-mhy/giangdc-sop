@@ -2492,3 +2492,50 @@ img.logo-img {
     min-width: 140px;
   }
 }
+
+/* ---------- T4: Bằng chứng nhập liệu (PRC-006) ---------- */
+.ev-value-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0.7rem 0;
+  padding: 0.7rem;
+  background: #f8fafc;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.ev-value-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.ev-value-label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.ev-value-row .btn-small {
+  align-self: flex-start;
+}
+.ev-value-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  max-width: 100%;
+}
+.ev-value-kind {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: #0369a1;
+}
+.ev-value-text {
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.req-star {
+  color: #dc2626;
+}
