@@ -593,8 +593,8 @@ function CreateExecutionForm({
     setLoadingSteps(true);
     setError('');
     try {
-      const v = (await api(`/processes/${pid}/versions`)) as { items: ProcessVersionDto[] };
-      const active = (v.items ?? []).find((x) => x.state === 'ACTIVE');
+      const v = (await api(`/processes/${pid}/versions`)) as { versions: ProcessVersionDto[] };
+      const active = (v.versions ?? []).find((x) => x.state === 'ACTIVE');
       if (!active) {
         setError('Quy trình chưa có bản ACTIVE — không thể tạo lượt.');
         return;
