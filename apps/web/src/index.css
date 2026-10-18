@@ -1605,6 +1605,11 @@ img.logo-img {
     overflow-x: auto;
     padding-bottom: 0.4rem;
     -webkit-overflow-scrolling: touch;
+    /* Bóng mờ mép phải gợi ý còn nội dung cuộn ngang (cột Thao tác). */
+    background:
+      linear-gradient(to right, var(--card) 30%, transparent),
+      linear-gradient(to left, rgba(12,26,56,0.12), transparent 24px) right center / 24px 100% no-repeat;
+    background-attachment: local, scroll;
   }
   .ver-head {
     display: flex;
@@ -1629,10 +1634,26 @@ img.logo-img {
   .ver-timeline .ver-no {
     min-width: 36px;
     font-size: 0.95rem;
+    flex-shrink: 0;
+  }
+  .ver-timeline .ver-main {
+    min-width: 0;
+  }
+  /* Rút gọn dòng "Tạo bởi..." trên mobile để cột Thao tác lộ ra nhiều hơn. */
+  .ver-timeline .ver-meta {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .ver-timeline .ver-actions {
+    flex-shrink: 0;
+    margin-left: auto;
   }
   .ver-timeline .ver-actions .btn-small {
     padding: 0.3rem 0.5rem;
     font-size: 0.78rem;
+    white-space: nowrap;
   }
 
   .proc-head {
