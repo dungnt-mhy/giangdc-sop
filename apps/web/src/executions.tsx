@@ -19,6 +19,7 @@ import type {
 } from '@giangdc-sop/contracts';
 import { api, API_BASE } from './App.js';
 import { ProcessDiagram } from './processes.js';
+import { parseHash, setHash } from './hashRoute.js';
 
 const SHIFT_LABEL: Record<ExecutionShift, string> = {
   SANG: 'Sáng',
@@ -86,24 +87,45 @@ async function apiForm<T>(path: string, form: FormData): Promise<T> {
 
 /* ---------------- Danh sách lượt ---------------- */
 
-export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetailId }: {
+export function ExecutionsView({ perms, userId, isSeniorApprover }: {
   perms: string[];
   userId: string;
   isSeniorApprover: boolean;
-  externalDetailId?: string | null;
 }) {
   const [items, setItems] = React.useState<ExecutionDto[]>([]);
   const [mineOnly, setMineOnly] = React.useState(true);
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(true);
   const [showCreate, setShowCreate] = React.useState(false);
-  const [detailId, setDetailId] = React.useState<string | null>(null);
+  // Hash-routing: refresh giữ chi tiết lượt đang xem.
+  const [detailId, setDetailId] = React.useState<string | null>(() => {
+    const r = parseHash();
+    return r.nav === 'executions' ? (r.executionId ?? null) : null;
+  });
+  const detailRef = React.useRef(detailId);
+  detailRef.current = detailId;
   const canCreate = perms.includes('execution.create');
 
-  // D-15: mở chi tiết lượt từ thông báo.
+  /** Mở/đóng chi tiết lượt + đồng bộ hash (setHash tránh vòng lặp khi không đổi). */
+  const openDetail = React.useCallback((id: string | null) => {
+    detailRef.current = id;
+    setDetailId(id);
+    setHash(id ? `#/executions/${id}` : '#/executions');
+  }, []);
+
+  // Back/forward trình duyệt hoặc bấm chuông thông báo (đi qua hash).
   React.useEffect(() => {
-    if (externalDetailId) setDetailId(externalDetailId);
-  }, [externalDetailId]);
+    const onHash = () => {
+      const r = parseHash();
+      if (r.nav !== 'executions') return;
+      const id = r.executionId ?? null;
+      if (id === detailRef.current) return; // do chính mình gây ra
+      detailRef.current = id;
+      setDetailId(id);
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -127,7 +149,7 @@ export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetail
         userId={userId}
         perms={perms}
         isSeniorApprover={isSeniorApprover}
-        onBack={() => { setDetailId(null); load(); }}
+        onBack={() => { openDetail(null); load(); }}
       />
     );
   }
@@ -175,7 +197,7 @@ export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetail
                 type="button"
                 key={ex.id}
                 className="exec-card"
-                onClick={() => setDetailId(ex.id)}
+                onClick={() => openDetail(ex.id)}
               >
                 <div className="exec-card-head">
                   <code>{ex.code}</code>
@@ -213,7 +235,7 @@ export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetail
       )}
       {showCreate && (
         <CreateExecutionForm
-          onDone={(id) => { setShowCreate(false); setDetailId(id); }}
+          onDone={(id) => { setShowCreate(false); openDetail(id); }}
           onCancel={() => setShowCreate(false)}
         />
       )}
