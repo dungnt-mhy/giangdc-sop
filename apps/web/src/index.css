@@ -1605,7 +1605,9 @@ img.logo-img {
     overflow-x: auto;
     padding-bottom: 0.4rem;
     -webkit-overflow-scrolling: touch;
-    /* Bóng mờ mép phải gợi ý còn nội dung cuộn ngang (cột Thao tác). */
+    /* Viền mờ bao quanh bảng + bóng mờ mép phải gợi ý cuộn ngang. */
+    border: 1px solid var(--border);
+    border-radius: 12px;
     background:
       linear-gradient(to right, var(--card) 30%, transparent),
       linear-gradient(to left, rgba(12,26,56,0.12), transparent 24px) right center / 24px 100% no-repeat;
@@ -1631,6 +1633,13 @@ img.logo-img {
   }
   .ver-timeline .ver-row {
     padding: 0.7rem 0.8rem;
+    /* Viền mờ ngăn cách các dòng. */
+    border-top: 1px solid var(--border);
+    background: transparent;
+    border-radius: 0;
+  }
+  .ver-timeline .ver-row:first-of-type {
+    border-top: none;
   }
   .ver-timeline .ver-no {
     font-size: 0.95rem;
