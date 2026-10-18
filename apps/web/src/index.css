@@ -1611,12 +1611,17 @@ img.logo-img {
       linear-gradient(to left, rgba(12,26,56,0.12), transparent 24px) right center / 24px 100% no-repeat;
     background-attachment: local, scroll;
   }
-  .ver-head {
-    display: flex;
+  /* Dùng grid 3 cột để header thẳng hàng với các dòng. */
+  .ver-head,
+  .ver-timeline .ver-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
     gap: 0.6rem;
     align-items: center;
     min-width: 520px;
-    padding: 0 0.8rem;
+  }
+  .ver-head {
+    padding: 0 0.8rem 0.3rem;
     font-size: 0.72rem;
     font-weight: 700;
     color: var(--muted);
@@ -1625,19 +1630,17 @@ img.logo-img {
     white-space: nowrap;
   }
   .ver-timeline .ver-row {
-    flex-direction: row;
-    align-items: center;
-    min-width: 520px;
-    gap: 0.6rem;
     padding: 0.7rem 0.8rem;
   }
   .ver-timeline .ver-no {
-    min-width: 36px;
     font-size: 0.95rem;
-    flex-shrink: 0;
+    font-weight: 800;
   }
   .ver-timeline .ver-main {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
   }
   /* Rút gọn dòng "Tạo bởi..." trên mobile để cột Thao tác lộ ra nhiều hơn. */
   .ver-timeline .ver-meta {
@@ -1647,8 +1650,10 @@ img.logo-img {
     max-width: 100%;
   }
   .ver-timeline .ver-actions {
-    flex-shrink: 0;
-    margin-left: auto;
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
   }
   .ver-timeline .ver-actions .btn-small {
     padding: 0.3rem 0.5rem;
