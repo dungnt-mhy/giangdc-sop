@@ -1,6 +1,25 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (D-19 hoàn thành code, chờ deploy + kiểm thử trình duyệt).
+Cập nhật: 18/10/2026 (D-22 hash-routing hoàn thành code, chờ deploy + kiểm thử trình duyệt).
+
+## D-22 — Hash-routing: refresh không về trang tổng quan (18/10/2026 tối)
+- **User yêu cầu trực tiếp** ("sửa luôn"): refresh ở trang chi tiết 1 quy trình bị về
+  trang tổng quan do nav/view lưu trong useState.
+- Mới `apps/web/src/hashRoute.ts`: `parseHash()` / `toHash()` / `setHash()` (tránh
+  vòng lặp khi hash không đổi). Định dạng: `#/` overview · `#/processes` list ·
+  `#/processes/{processId}` detail · `#/processes/{processId}/edit|review/{versionId}` ·
+  `#/executions` list · `#/executions/{executionId}` detail.
+- `apps/web/src/App.tsx`: nav khởi tạo từ hash; `hashchange` → đồng bộ khi back/forward;
+  `goNav` đổi nav + hash; chuông thông báo mở lượt qua `#/executions/{id}`
+  (bỏ `notifExecId`/`externalDetailId`).
+- `apps/web/src/processes.tsx`: `goView` đổi view + hash; mount/back-forward khôi phục
+  từ hash — edit/review thì `GET /versions/{versionId}` trước (hiện "Đang tải…",
+  lỗi → về detail); so sánh với `viewRef` để không vòng lặp.
+- `apps/web/src/executions.tsx`: `detailId` khởi tạo từ hash; `openDetail` đồng bộ
+  hash; `hashchange` listener cập nhật khi back/forward/chuông.
+- `pnpm --filter giangdc-sop-web build` pass; `pnpm -r exec tsc --noEmit` 0 lỗi;
+  `pnpm test` 108/108.
+- Chưa deploy/commit/push/browser-test (parent làm).
 
 ## Đã verified
 
