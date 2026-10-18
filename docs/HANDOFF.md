@@ -1,5 +1,28 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-21b — badge danh sách cho từ chối cả lượt, subagent)
+
+### Đã làm
+
+1. **Contract** (`packages/contracts/src/execution.ts`): `ExecutionDto`
+   +`lastRejectKind: 'steps' | 'all' | null`.
+2. **API** (`apps/api/src/executionDb.ts`): helper mới `lastRejectKindOf(reviews)`
+   (từ review gần nhất: reject có stepIds → 'steps', reject stepIds null → 'all',
+   còn lại → null); dùng trong `toExecutionDto`.
+3. **Web** (`apps/web/src/executions.tsx`): danh sách lượt —
+   `lastRejectKind==='steps'` → badge "🔄 Bị trả lại: {N} bước" (như cũ);
+   `==='all'` → badge "🔄 Bị trả lại làm lại" (mới, đồng nhất với detail D-18).
+4. **Test**: `apps/api/src/executionReviews.test.ts` +4 test `lastRejectKindOf`.
+5. **Evidence:** `pnpm test` **108/108** (95 domain + 13 API); `pnpm -r exec tsc --noEmit`
+   0 lỗi. KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-21b** (cần parent agent — subagent không có live browser):
+  tạo lượt → báo hoàn thành → từ chối "Trả toàn bộ lượt" → danh sách hiện badge
+  "🔄 Bị trả lại làm lại" (trước đây không hiện gì).
+
 ## Phiên 18/10/2026 (D-20b rework — "Đã hủy" = flag thay vì state VOID, subagent)
 
 ### Đã làm
