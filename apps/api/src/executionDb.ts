@@ -74,6 +74,7 @@ interface ExecutionStepRow {
   skip_json: string | null;
   started_at: string | null;
   completed_at: string | null;
+  attempt_no: number | null;
 }
 
 interface EvidenceRow {
