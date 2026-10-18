@@ -19,6 +19,7 @@ import type {
   AssignStepBody,
   CreateExceptionBody,
   CreateExecutionBody,
+  CreateValueEvidenceBody,
   ExceptionDto,
   ExceptionHandleAction,
   ExceptionSeverity,
@@ -626,10 +627,19 @@ executionApp.post(
       return c.json(errorBody('STEP_STATE_INVALID', `Bước đang ở trạng thái ${step.state}, chỉ hoàn thành được bước đang thực hiện.`, requestId), 409);
     }
     const completion = safeJsonParseCompletion(step.completion_json);
-    if (photoRequired(completion)) {
-      const photos = await listEvidenceForSteps(c.env.DB, [step.id]);
-      if (!photos.some((p) => p.kind === 'PHOTO')) {
-        return c.json(errorBody('PHOTO_REQUIRED', `Bước ${step.step_code} yêu cầu ảnh chụp (PRC-006) — hãy chụp ảnh trước khi hoàn thành.`, requestId), 400);
+    // T4 (PRC-006): kiểm tra TẤT CẢ loại bằng chứng bắt buộc, không chỉ PHOTO.
+    const requiredKinds = completion.filter((c) => c.required).map((c) => c.kind);
+    if (requiredKinds.length > 0) {
+      const evidences = await listEvidenceForSteps(c.env.DB, [step.id]);
+      const hasKind = new Set(evidences.map((e) => e.kind));
+      const missing = requiredKinds.filter((k) => !hasKind.has(k));
+      if (missing.length > 0) {
+        const kindLabels: Record<string, string> = {
+          FIELD: 'trường dữ liệu', FORM: 'biểu mẫu', PHOTO: 'ảnh chụp', FILE: 'tệp',
+          CONFIRM: 'xác nhận', SCAN: 'mã quét', NOTE: 'ghi chú',
+        };
+        const missingLabels = missing.map((k) => kindLabels[k] ?? k).join(', ');
+        return c.json(errorBody('EVIDENCE_REQUIRED', `Bước ${step.step_code} thiếu bằng chứng bắt buộc: ${missingLabels} (PRC-006).`, requestId), 400);
       }
     }
     const now = new Date().toISOString();
@@ -1104,6 +1114,58 @@ executionApp.get('/evidence/:id', requireAuth, requirePermission('execution.view
       'Content-Disposition': `inline; filename="${encodeURIComponent(ev.file_name)}"`,
       'Cache-Control': 'private, max-age=3600',
     },
+  });
+});
+
+/* ---------- T4: Bằng chứng phi tệp (FIELD/FORM/CONFIRM/SCAN/NOTE, PRC-006) ---------- */
+
+/** POST /executions/:id/steps/:stepId/evidence-value — lưu bằng chứng nhập liệu (không phải file). */
+executionApp.post('/executions/:id/steps/:stepId/evidence-value', requireAuth, requirePermission('execution.operate' as Permission), async (c) => {
+  const body = await parseJson<CreateValueEvidenceBody>(c);
+  return withIdempotency(c, 'execution.step.evidence-value', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const execRow = await findExecution(c.env.DB, c.req.param('id'));
+    if (!execRow) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId) };
+    }
+    const scopeCheck = await checkExecutionScope(c, execRow.org_unit_id, execRow.id);
+    if (!scopeCheck.ok) return { status: 403, body: errorBody('FORBIDDEN_SCOPE', 'Ngoài phạm vi dữ liệu.', requestId) };
+    if (execRow.state !== 'IN_PROGRESS') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ nhập bằng chứng khi lượt đang thực hiện.', requestId) };
+    }
+    const step = await findExecutionStep(c.env.DB, execRow.id, c.req.param('stepId'));
+    if (!step) {
+      return { status: 404, body: errorBody('STEP_NOT_FOUND', 'Không tìm thấy bước.', requestId) };
+    }
+    if (step.state !== 'IN_PROGRESS') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ nhập bằng chứng cho bước đang thực hiện.', requestId) };
+    }
+    const kind = body?.kind;
+    if (!['FIELD', 'FORM', 'CONFIRM', 'SCAN', 'NOTE'].includes(kind ?? '')) {
+      return { status: 400, body: errorBody('INVALID_KIND', 'Loại bằng chứng không hợp lệ.', requestId) };
+    }
+    const value = body?.value?.trim() ?? '';
+    if (!value) {
+      return { status: 400, body: errorBody('INVALID_REQUEST', 'Cần nhập giá trị bằng chứng.', requestId) };
+    }
+    if (kind === 'FORM') {
+      try { JSON.parse(value); } catch {
+        return { status: 400, body: errorBody('INVALID_FORM', 'Biểu mẫu phải là JSON hợp lệ.', requestId) };
+      }
+    }
+    const evId = newId();
+    const now = new Date().toISOString();
+    await c.env.DB.prepare(
+      `INSERT INTO evidence (id, execution_id, execution_step_id, kind, r2_key, file_name, mime_type, size_bytes, value_text, uploaded_by, uploaded_at)
+       VALUES (?1,?2,?3,?4,'','','',0,?5,?6,?7)`,
+    ).bind(evId, execRow.id, step.id, kind, value, session.user_id, now).run();
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: 'execution.evidence_value.create',
+      objectType: 'evidence', objectId: evId, reason: `${execRow.code}/${step.step_code}/${kind}`, requestId,
+    });
+    const ev = await findEvidence(c.env.DB, evId);
+    return { status: 201, body: { evidence: ev ? toEvidenceDto(ev) : null } };
   });
 });
 
