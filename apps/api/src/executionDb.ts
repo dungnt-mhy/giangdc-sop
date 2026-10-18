@@ -77,7 +77,7 @@ interface ExecutionStepRow {
   attempt_no: number | null;
 }
 
-interface EvidenceRow {
+export interface EvidenceRow {
   id: string;
   execution_id: string;
   execution_step_id: string;
