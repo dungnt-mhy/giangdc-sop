@@ -15,6 +15,8 @@ export type ExecutionState =
   | 'PAUSED'
   | 'BLOCKED'
   | 'COMPLETED'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
   | 'CANCELLED';
 
 export type ExecutionStepState = 'PENDING' | 'IN_PROGRESS' | 'DONE';
@@ -85,6 +87,15 @@ export interface ExecutionDto {
   /** D-14: người giám sát. */
   supervisorId: string | null;
   supervisorName: string | null;
+  /** D-15: người gửi duyệt + thời điểm. */
+  approvalRequestedBy: string | null;
+  approvalRequestedByName: string | null;
+  approvalRequestedAt: string | null;
+  /** D-15: người duyệt + thời điểm + ghi chú (lý do từ chối). */
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  approvalNote: string | null;
   createdAt: string;
   updatedAt: string;
   steps: ExecutionStepDto[];
@@ -131,4 +142,30 @@ export interface AssignStepBody {
   /** user được gán thực hiện (phải có chức vụ khớp "Vai trò thực hiện" nếu bước có định nghĩa). */
   performerUserId: string;
   supervisorUserId?: string | null;
+}
+
+/** D-15: body từ chối duyệt (lý do bắt buộc). */
+export interface RejectApprovalBody {
+  reason: string;
+}
+
+/* ---------- Notifications (D-15) ---------- */
+
+/** D-15: loại thông báo trong app. */
+export type NotificationType =
+  | 'execution.submitted'
+  | 'execution.approved'
+  | 'execution.rejected'
+  | 'step.assigned';
+
+/** D-15: thông báo trong app (chuông + badge). */
+export interface NotificationDto {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  refType: string | null;
+  refId: string | null;
+  isRead: boolean;
+  createdAt: string;
 }
