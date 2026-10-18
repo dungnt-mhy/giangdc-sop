@@ -51,6 +51,12 @@ export interface ProcessDto {
   updatedAt: string;
   /** Tên hiển thị của người tạo (JOIN users qua created_by). */
   createdByName: string | null;
+  /** Số bản đang hiệu lực (null nếu chưa có bản phát hành). */
+  activeVersionNo: number | null;
+  /** true nếu có bản hẹn giờ hiệu lực. */
+  hasScheduledVersion: boolean;
+  /** Trạng thái bản mới nhất (null nếu chưa có bản nào). */
+  latestVersionState: ProcessVersionState | null;
 }
 
 export interface ProcessVersionDto {
