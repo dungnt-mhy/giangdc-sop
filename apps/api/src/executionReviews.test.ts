@@ -45,19 +45,32 @@ describe('addExecutionReview', () => {
     expect(calls).toHaveLength(1);
     const { sql, binds } = calls[0];
     expect(sql).toContain('INSERT INTO execution_reviews');
-    expect(sql).toContain('execution_id, action, actor_id, reason, created_at');
+    expect(sql).toContain('execution_id, action, actor_id, reason, step_ids, created_at');
     expect(binds[1]).toBe('ex-1');
     expect(binds[2]).toBe('reject');
     expect(binds[3]).toBe('u-pheduyet');
     expect(binds[4]).toBe('Thiếu ảnh bước 3');
+    expect(binds[5]).toBeNull(); // step_ids null khi không truyền
     expect(typeof binds[0]).toBe('string'); // id
-    expect(typeof binds[5]).toBe('string'); // created_at ISO
+    expect(typeof binds[6]).toBe('string'); // created_at ISO
   });
 
   it('reason null khi không truyền', async () => {
     const { db, calls } = makeFakeDb();
     await addExecutionReview(db, { executionId: 'ex-1', action: 'submit', actorId: 'u-admin' });
     expect(calls[0].binds[4]).toBeNull();
+  });
+
+  it('D-21: stepIds được lưu dạng JSON', async () => {
+    const { db, calls } = makeFakeDb();
+    await addExecutionReview(db, {
+      executionId: 'ex-1',
+      action: 'reject',
+      actorId: 'u-pheduyet',
+      reason: 'Làm lại bước 2, 3',
+      stepIds: ['s2', 's3'],
+    });
+    expect(calls[0].binds[5]).toBe(JSON.stringify(['s2', 's3']));
   });
 });
 
@@ -85,5 +98,23 @@ describe('listExecutionReviews', () => {
   it('trả mảng rỗng khi chưa có review', async () => {
     const { db } = makeFakeDb([]);
     expect(await listExecutionReviews(db, 'ex-1')).toEqual([]);
+  });
+
+  it('D-21: parse step_ids JSON thành stepIds', async () => {
+    const { db } = makeFakeDb([
+      { id: 'r1', action: 'reject', actor_id: 'u-pheduyet', actor_name: 'Người Phê duyệt', reason: 'Làm lại', step_ids: '["s2","s3"]', created_at: '2026-10-18T10:12:52.751Z' },
+      { id: 'r2', action: 'reject', actor_id: 'u-pheduyet', actor_name: 'Người Phê duyệt', reason: 'Trả hết', step_ids: null, created_at: '2026-10-18T09:00:00.000Z' },
+    ]);
+    const reviews = await listExecutionReviews(db, 'ex-1');
+    expect(reviews[0].stepIds).toEqual(['s2', 's3']);
+    expect(reviews[1].stepIds).toBeNull();
+  });
+
+  it('D-21: step_ids JSON hỏng -> null', async () => {
+    const { db } = makeFakeDb([
+      { id: 'r1', action: 'reject', actor_id: 'u-x', actor_name: null, reason: null, step_ids: 'not-json', created_at: '2026-10-18T10:00:00.000Z' },
+    ]);
+    const reviews = await listExecutionReviews(db, 'ex-1');
+    expect(reviews[0].stepIds).toBeNull();
   });
 });
