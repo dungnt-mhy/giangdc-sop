@@ -1981,3 +1981,37 @@ img.logo-img {
   .exec-step-list::before { left: 1.7rem; }
   .step-num { left: 0.7rem; }
 }
+
+/* D-18: Thông tin lượt công việc */
+.exec-info {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  margin: 0.9rem 0;
+  box-shadow: 0 1px 3px rgba(8, 18, 38, 0.06);
+}
+.exec-info h3 {
+  margin: 0 0 0.7rem;
+  font-size: 1.05rem;
+}
+.exec-info-row { margin-bottom: 0.65rem; }
+.exec-info-row:last-child { margin-bottom: 0; }
+.info-label {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-bottom: 0.15rem;
+}
+.info-value { font-size: 0.95rem; color: #0f172a; }
+.info-value.strong { font-weight: 600; }
+.info-value .chip { margin-right: 0.35rem; }
+.reject-list {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  background: #f8fafc;
+}
+.reject-item { padding: 0.45rem 0; }
+.reject-item + .reject-item { border-top: 1px solid #e2e8f0; }
+.reject-head { font-size: 0.95rem; margin-bottom: 0.15rem; }
+.exec-info .exec-progress-bar { margin: 0.25rem 0; }
