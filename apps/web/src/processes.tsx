@@ -561,7 +561,7 @@ function ProcessDetail({
  * Sơ đồ quy trình dạng luồng dọc: Bắt đầu → các bước theo thứ tự → Kết thúc.
  * Tự vẽ bằng SVG (không thêm thư viện), responsive, bấm vào node để mở/đóng chi tiết bước.
  */
-function ProcessDiagram({
+export function ProcessDiagram({
   steps,
   openSteps,
   onToggle,
