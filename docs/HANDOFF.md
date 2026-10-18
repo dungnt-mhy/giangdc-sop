@@ -1,5 +1,36 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 19/10/2026 (T7 — Admin & quản trị, subagent)
+
+### Đã làm
+
+1. **Migration** `apps/api/migrations/0015_admin.sql`: bảng `reason_catalog` + 9 lý do mẫu
+   (CHƯA apply lên D1 — parent apply trước khi deploy API).
+2. **Contract** `packages/contracts/src/admin.ts` (export từ index.ts): DTO + body +
+   nhãn tiếng Việt + mã lỗi chuẩn.
+3. **API** `apps/api/src/admin.ts` + `apps/api/src/adminDb.ts`, mount `/admin` (index.ts);
+   guard `requireAuth` + `requirePermission('user.manage')` cho toàn bộ router.
+4. **Test** `apps/api/src/admin.test.ts`: 15 test (validate username/password, cấm tự khóa,
+   status/category, toReasonDto, ADM-003 không rò rỉ password).
+5. **Web** `apps/web/src/admin.tsx` (4 tab) + `hashRoute.ts` (`#/admin`) + `App.tsx`
+   (menu "⚙ Quản trị" theo quyền, nav `admin`, render `AdminView`); CSS mới
+   (search-input, error-banner, check-list, perm-chips).
+6. **Docs:** PROGRESS.md + HANDOFF.md + DECISIONS.md (D-25) đã cập nhật.
+
+### Chưa làm (parent tiếp tục)
+
+- Apply migration 0015 lên D1 **trước** deploy API.
+- Deploy Worker + Pages, smoke test các endpoint /admin/*.
+- Kiểm thử trình duyệt: đăng nhập admin → menu Quản trị → CRUD user/reason, xem audit.
+- Commit + push GitHub (task yêu cầu KHÔNG push).
+
+### Lưu ý kỹ thuật
+
+- `users.status` dùng CHECK ('ACTIVE','LOCKED','DISABLED') — không có cột is_active.
+- `var(--border)` từng thiếu định nghĩa (đã fix ở phiên mobile trước).
+- `PositionDto` đã tồn tại trong process.ts → contract admin dùng tên `AdminPositionDto`.
+
+
 ## Phiên 18/10/2026 (D-22 — hash-routing chống refresh về tổng quan, subagent)
 
 ### Đã làm
