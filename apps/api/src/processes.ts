@@ -176,6 +176,7 @@ processApp.get('/processes', requireAuth, requirePermission('process.view'), asy
       group: c.req.query('group') || undefined,
       status: c.req.query('status') || undefined,
       orgUnitId: c.req.query('orgUnitId') || undefined,
+      hasActiveVersion: c.req.query('hasActiveVersion') === '1',
     },
     Math.min(parseInt(c.req.query('limit') || '20', 10) || 20, 100),
     parseInt(c.req.query('offset') || '0', 10) || 0,
