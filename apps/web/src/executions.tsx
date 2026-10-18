@@ -181,7 +181,7 @@ export function ExecutionsView({ perms, userId }: { perms: string[]; userId: str
                   <span className="muted">{done}/{total} bước</span>
                 </div>
                 <div className="exec-card-meta muted">
-                  {ex.createdByName ?? ''} · {new Date(ex.createdAt).toLocaleDateString('vi-VN')}
+                  {ex.createdByName ?? ''}{ex.createdByPositions ? ` — ${ex.createdByPositions}` : ''} · {new Date(ex.createdAt).toLocaleDateString('vi-VN')}
                   {ex.orgUnitName ? ` · ${ex.orgUnitName}` : ''}
                 </div>
               </button>
@@ -191,7 +191,6 @@ export function ExecutionsView({ perms, userId }: { perms: string[]; userId: str
       )}
       {showCreate && (
         <CreateExecutionForm
-          userId={userId}
           onDone={(id) => { setShowCreate(false); setDetailId(id); }}
           onCancel={() => setShowCreate(false)}
         />
@@ -583,7 +582,7 @@ export function ExecutionDetail({
             {ex.orgUnitName ? ` · ${ex.orgUnitName}` : ''}
           </p>
           <p className="sec-desc">
-            Người tạo: {ex.createdByName ?? '—'}
+            Người tạo: {ex.createdByName ?? '—'}{ex.createdByPositions ? ` — ${ex.createdByPositions}` : ''}
             {' · '}Người thực hiện chính: {ex.mainPerformerName ?? ex.createdByName ?? '—'}
             {ex.supervisorName ? ` · Người giám sát: ${ex.supervisorName}` : ''}
           </p>
@@ -781,11 +780,9 @@ function AssignStepDialog({
 /* ---------------- Form tạo lượt đơn giản (D-14) ---------------- */
 
 function CreateExecutionForm({
-  userId,
   onDone,
   onCancel,
 }: {
-  userId: string;
   onDone: (executionId: string) => void;
   onCancel: () => void;
 }) {
@@ -796,9 +793,11 @@ function CreateExecutionForm({
   const [versionNo, setVersionNo] = React.useState<number | null>(null);
   const [title, setTitle] = React.useState('');
   const [executionDate, setExecutionDate] = React.useState(() => new Date().toISOString().slice(0, 10));
-  const [executionTime, setExecutionTime] = React.useState('');
+  const [executionTime, setExecutionTime] = React.useState(() => {
+    const n = new Date();
+    return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
+  });
   const [shift, setShift] = React.useState('');
-  const [createdBy, setCreatedBy] = React.useState(userId);
   const [mainPerformerId, setMainPerformerId] = React.useState('');
   const [supervisorId, setSupervisorId] = React.useState('');
   const [error, setError] = React.useState('');
@@ -837,7 +836,7 @@ function CreateExecutionForm({
     }
   };
 
-  const valid = processId !== '' && versionId !== '' && executionDate !== '' && createdBy !== '';
+  const valid = processId !== '' && versionId !== '' && executionDate !== '' && title.trim() !== '';
 
   const submit = async () => {
     if (!valid || busy) return;
@@ -846,11 +845,10 @@ function CreateExecutionForm({
     try {
       const body: CreateExecutionBody = {
         processVersionId: versionId,
-        title: title.trim() || null,
+        title: title.trim(),
         executionDate: executionDate || null,
         executionTime: executionTime || null,
         shift: (shift || null) as ExecutionShift | null,
-        createdBy: createdBy || null,
         mainPerformerId: mainPerformerId || null,
         supervisorId: supervisorId || null,
       };
@@ -886,7 +884,7 @@ function CreateExecutionForm({
           <p className="sec-desc">Dùng bản <strong>v{versionNo} (ACTIVE)</strong>.</p>
         )}
         <div className="field">
-          <label>Tiêu đề lượt</label>
+          <label>Tiêu đề lượt *</label>
           <input
             className="input"
             value={title}
@@ -920,17 +918,6 @@ function CreateExecutionForm({
             <option value="CHIEU">Chiều</option>
             <option value="TOI">Tối</option>
           </select>
-        </div>
-        <div className="field">
-          <label>Người tạo *</label>
-          <select className="input" value={createdBy} onChange={(e) => setCreatedBy(e.target.value)}>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.displayName}{u.id === userId ? ' (tôi)' : ''}
-              </option>
-            ))}
-          </select>
-          <p className="sec-desc">Người chịu trách nhiệm tạo lượt thực hiện này.</p>
         </div>
         <div className="field">
           <label>Người thực hiện chính</label>
