@@ -34,6 +34,7 @@ interface ExecutionRow {
   shift: string | null;
   created_by: string;
   created_by_name: string | null;
+  created_by_positions: string | null;
   main_performer_id: string | null;
   main_performer_name: string | null;
   supervisor_id: string | null;
@@ -83,6 +84,7 @@ const EXECUTION_SELECT = `
          pv.version_no AS version_no,
          ou.name AS org_unit_name,
          u.display_name AS created_by_name,
+         (SELECT GROUP_CONCAT(pos.name, ', ') FROM user_positions up JOIN positions pos ON pos.id = up.position_id WHERE up.user_id = e.created_by) AS created_by_positions,
          um.display_name AS main_performer_name,
          us.display_name AS supervisor_name
   FROM executions e
@@ -328,6 +330,7 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     shift: (row.shift as ExecutionDto['shift']) ?? null,
     createdBy: row.created_by,
     createdByName: row.created_by_name,
+    createdByPositions: row.created_by_positions ?? null,
     mainPerformerId: row.main_performer_id,
     mainPerformerName: row.main_performer_name,
     supervisorId: row.supervisor_id,
