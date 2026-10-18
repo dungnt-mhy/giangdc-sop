@@ -53,6 +53,8 @@ interface VersionRow {
   revision: number;
   created_at: string;
   updated_at: string;
+  voided_at: string | null;
+  void_reason: string | null;
 }
 
 interface StepRow {
@@ -149,6 +151,8 @@ export function toVersionDto(r: VersionRow): ProcessVersionDto {
     revision: r.revision,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    voidedAt: r.voided_at ?? null,
+    voidReason: r.void_reason ?? null,
   };
 }
 
