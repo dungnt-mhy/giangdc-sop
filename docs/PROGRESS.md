@@ -1,8 +1,35 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (D-17 hoàn thành code, chờ deploy + kiểm thử trình duyệt).
+Cập nhật: 18/10/2026 (D-18 hoàn thành code, chờ apply migration + deploy + kiểm thử trình duyệt).
 
 ## Đã verified
+
+- **D-18: nhật ký duyệt + Thông tin lượt công việc đầy đủ — HOÀN THÀNH CODE 18/10/2026 (subagent, user duyệt "Đồng ý").**
+  - Migration 0011 (`apps/api/migrations/0011_execution_reviews.sql`, CHƯA apply D1):
+    bảng `execution_reviews` (id, execution_id FK CASCADE, action CHECK
+    submit|approve|reject|cancel_submit, actor_id FK users, reason, created_at mặc định)
+    + index (execution_id, created_at DESC); `executions` thêm `started_at`.
+  - Contract (`packages/contracts/src/execution.ts`): `ExecutionReviewAction`,
+    `ExecutionReviewDto`, `REVIEW_ACTION_LABEL` (vi); `ExecutionDto` thêm
+    `startedAt: string | null` và `reviews: ExecutionReviewDto[]` (mới nhất trước).
+  - API (`apps/api/src/executionDb.ts`, `executions.ts`): helper `addExecutionReview` /
+    `listExecutionReviews` (JOIN users lấy display_name, ORDER BY created_at DESC);
+    `/start` lưu `started_at`; `/submit|approve|reject|cancel-submit` ghi review tương ứng
+    sau transition 200 (reject kèm reason); `toExecutionDto` trả `startedAt` + `reviews`.
+    Test mới `apps/api/src/executionReviews.test.ts` (fake D1): **4/4 đạt**.
+  - Web (`apps/web/src/executions.tsx`, `index.css`): mục **"Thông tin lượt công việc"**
+    (card `.exec-info`, trên danh sách bước, dưới cụm nút sticky) gồm: Trạng thái
+    (chip + badge "🔄 Bị trả lại làm lại" khi review mới nhất là reject và lượt đang
+    thực hiện); "Lịch sử từ chối (N lần)" (Lần 1..N cũ→mới: người từ chối, giờ vi-VN,
+    lý do); Quy trình; Ngày thực hiện (dự kiến); Bắt đầu lúc; Người tạo;
+    Người thực hiện chính; Người duyệt (giám sát ?? người đã xác nhận, chỉ hiện khi có);
+    vết Báo/Xác nhận gần nhất (từ reviews); Đơn vị; Ghi chú; Tiến độ (bar + X/Y bước (Z%)).
+    Xóa `metaItems`/`exec-meta-grid` cũ (đã thay thế, không trùng lặp).
+  - Build: `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **97/97** (93 domain + 4 API mới).
+  - Chưa apply migration 0011 lên D1, chưa deploy/commit/push (parent tự làm);
+    kiểm thử trình duyệt chờ parent agent.
+  - Lưu ý: lịch sử từ chối trước D-18 không khôi phục được (trước đây lưu đè
+    approval_note); lượt cũ có startedAt = NULL → hiện "—".
 
 - **D-17: làm lại giao diện chi tiết lượt — HOÀN THÀNH CODE 18/10/2026 (subagent, user duyệt "Ok").**
   - Web (`apps/web/src/executions.tsx`, `index.css`) — chỉ UI, không đụng API/migration:
