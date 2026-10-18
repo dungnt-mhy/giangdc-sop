@@ -182,6 +182,9 @@ export function ExecutionsView({ perms, userId, isSeniorApprover, externalDetail
                   <span className={`chip sm ${EXEC_STATE_CHIP[ex.state]}`}>
                     {EXEC_STATE_LABEL[ex.state]}
                   </span>
+                  {ex.rejectedStepCount > 0 && (
+                    <span className="chip sm warn">🔄 Bị trả lại: {ex.rejectedStepCount} bước</span>
+                  )}
                 </div>
                 <div className="exec-card-title">
                   {ex.title ? <>{ex.title} <span className="muted">· {ex.processName}</span></> : ex.processName}
@@ -443,6 +446,7 @@ function StepWorkCard({
   req,
   blockedByOrder,
   guide,
+  lastRedoReason,
   onChanged,
 }: {
   step: ExecutionStepDto;
@@ -456,6 +460,8 @@ function StepWorkCard({
   blockedByOrder: boolean;
   /** D-17: chi tiết bước từ quy trình (hướng dẫn), map theo stepCode. */
   guide: ProcessStepDto | undefined;
+  /** D-21: lý do của lần trả làm lại gần nhất chứa bước này (cho tooltip badge). */
+  lastRedoReason: string | null;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = React.useState(false);
@@ -529,7 +535,15 @@ function StepWorkCard({
           <span className={`chip sm ${STEP_STATE_CHIP[step.state]}`}>
             {STEP_STATE_LABEL[step.state]}
           </span>{' '}
-          {!step.required && <span className="chip sm muted">Tùy chọn</span>}
+          {!step.required && <span className="chip sm muted">Tùy chọn</span>}{' '}
+          {step.redoCount > 0 && (
+            <span
+              className="chip sm warn"
+              title={lastRedoReason ? `Lý do trả làm lại: ${lastRedoReason}` : undefined}
+            >
+              🔄 Làm lại lần {step.redoCount}
+            </span>
+          )}
         </div>
       </div>
 
@@ -712,20 +726,36 @@ export function ExecutionDetail({
 
   const [rejectOpen, setRejectOpen] = React.useState(false);
   const [rejectReason, setRejectReason] = React.useState('');
+  /** D-21: phương án từ chối — 'all' trả toàn bộ, 'steps' chọn bước làm lại. */
+  const [rejectMode, setRejectMode] = React.useState<'all' | 'steps'>('all');
+  const [rejectStepIds, setRejectStepIds] = React.useState<string[]>([]);
+
+  const openReject = () => {
+    setRejectReason('');
+    setRejectMode('all');
+    setRejectStepIds([]);
+    setRejectOpen(true);
+  };
 
   const doReject = async () => {
     if (!ex || busy || !rejectReason.trim()) return;
+    if (rejectMode === 'steps' && rejectStepIds.length === 0) return;
     setBusy(true);
     setError('');
     try {
       const d = (await api(`/executions/${ex.id}/reject`, {
         method: 'POST',
         headers: { 'Idempotency-Key': newIdemKey() },
-        body: JSON.stringify({ reason: rejectReason.trim() }),
+        body: JSON.stringify({
+          reason: rejectReason.trim(),
+          mode: rejectMode,
+          ...(rejectMode === 'steps' ? { stepIds: rejectStepIds } : {}),
+        }),
       })) as { execution: ExecutionDto };
       setEx(d.execution);
       setRejectOpen(false);
       setRejectReason('');
+      setRejectStepIds([]);
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -827,7 +857,7 @@ export function ExecutionDetail({
                 <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('approve')}>
                   {busy ? 'Đang xử lý…' : '✓ Xác nhận hoàn thành'}
                 </button>
-                <button type="button" className="btn-small danger" disabled={busy} onClick={() => setRejectOpen(true)}>
+                <button type="button" className="btn-small danger" disabled={busy} onClick={openReject}>
                   ✕ Từ chối
                 </button>
               </>
@@ -844,7 +874,12 @@ export function ExecutionDetail({
           <div className="info-label">Trạng thái</div>
           <div className="info-value">
             <span className={`chip ${EXEC_STATE_CHIP[ex.state]}`}>{EXEC_STATE_LABEL[ex.state]}</span>
-            {isReturned && <span className="chip warn">🔄 Bị trả lại làm lại</span>}
+            {isReturned && ex.rejectedStepCount > 0 && (
+              <span className="chip warn">🔄 Bị trả lại: {ex.rejectedStepCount} bước làm lại</span>
+            )}
+            {isReturned && ex.rejectedStepCount === 0 && (
+              <span className="chip warn">🔄 Bị trả lại làm lại</span>
+            )}
           </div>
         </div>
 
@@ -856,6 +891,11 @@ export function ExecutionDetail({
                 <div key={r.id} className="reject-item">
                   <div className="reject-head">
                     <strong>Lần {i + 1}</strong> · 🔄 Yêu cầu làm lại
+                    {r.stepIds && r.stepIds.length > 0 && (
+                      <span className="muted">
+                        {' '}({r.stepIds.map((sid) => ex.steps.find((s) => s.id === sid)?.stepCode ?? sid).join(', ')})
+                      </span>
+                    )}
                   </div>
                   <div className="muted">👤 {r.actorName ?? '—'} · 🕐 {fmtDateTime(r.createdAt)}</div>
                   {r.reason && <div>Lý do: {r.reason}</div>}
@@ -980,6 +1020,9 @@ export function ExecutionDetail({
                 req={stepReqs[s.stepCode]}
                 blockedByOrder={ex.steps.some((p) => p.sortOrder < s.sortOrder && p.state !== 'DONE')}
                 guide={guides[s.stepCode]}
+                lastRedoReason={
+                  ex.reviews.find((r) => r.action === 'reject' && r.stepIds?.includes(s.id))?.reason ?? null
+                }
                 onChanged={load}
               />
             ))}
@@ -1021,6 +1064,47 @@ export function ExecutionDetail({
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Từ chối xác nhận lượt {ex.code}</h3>
             <div className="field">
+              <label className="check">
+                <input
+                  type="radio"
+                  checked={rejectMode === 'all'}
+                  onChange={() => setRejectMode('all')}
+                />
+                Trả toàn bộ lượt làm lại
+              </label>
+              <label className="check">
+                <input
+                  type="radio"
+                  checked={rejectMode === 'steps'}
+                  onChange={() => setRejectMode('steps')}
+                />
+                Chọn bước cần làm lại
+              </label>
+            </div>
+            {rejectMode === 'steps' && (
+              <div className="field">
+                <label>Bước làm lại * (chọn ít nhất 1)</label>
+                <div className="reject-steps">
+                  {ex.steps.filter((s) => s.state === 'DONE').map((s) => (
+                    <label key={s.id} className="check">
+                      <input
+                        type="checkbox"
+                        checked={rejectStepIds.includes(s.id)}
+                        onChange={(e) => setRejectStepIds((prev) =>
+                          e.target.checked ? [...prev, s.id] : prev.filter((id) => id !== s.id),
+                        )}
+                      />
+                      {s.stepCode} — {s.title}
+                      {s.redoCount > 0 && <span className="muted"> (đã làm lại {s.redoCount} lần)</span>}
+                    </label>
+                  ))}
+                  {ex.steps.filter((s) => s.state === 'DONE').length === 0 && (
+                    <p className="sec-desc">Không có bước nào đã hoàn thành.</p>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="field">
               <label>Lý do từ chối *</label>
               <textarea
                 className="input"
@@ -1032,7 +1116,12 @@ export function ExecutionDetail({
             </div>
             <div className="modal-actions">
               <button type="button" className="btn-ghost" onClick={() => setRejectOpen(false)}>Hủy</button>
-              <button type="button" className="btn-small danger" disabled={busy || !rejectReason.trim()} onClick={doReject}>
+              <button
+                type="button"
+                className="btn-small danger"
+                disabled={busy || !rejectReason.trim() || (rejectMode === 'steps' && rejectStepIds.length === 0)}
+                onClick={doReject}
+              >
                 {busy ? 'Đang xử lý…' : 'Xác nhận từ chối'}
               </button>
             </div>
