@@ -18,6 +18,7 @@ import type {
   ProcessVersionDto,
 } from '@giangdc-sop/contracts';
 import { api, API_BASE } from './App.js';
+import { ProcessDiagram } from './processes.js';
 
 const SHIFT_LABEL: Record<ExecutionShift, string> = {
   SANG: 'Sáng',
@@ -25,8 +26,7 @@ const SHIFT_LABEL: Record<ExecutionShift, string> = {
   TOI: 'Tối',
 };
 
-const EXEC_STATE_LABEL: Record<ExecutionState, string> = {
-  CREATED: 'Mới tạo',
+const EXEC_STATE_LABEL: Record<ExecutionState, string> = {  CREATED: 'Mới tạo',
   IN_PROGRESS: 'Đang thực hiện',
   PAUSED: 'Tạm dừng',
   BLOCKED: 'Bị chặn',
@@ -414,7 +414,7 @@ function StepGuide({ guide, open, onToggle }: {
   return (
     <div className="step-guide">
       <button type="button" className="guide-toggle" onClick={onToggle} aria-expanded={open}>
-        📖 Xem hướng dẫn chi tiết {open ? '▾' : '▸'}
+        {open ? '▼' : '▶'} 📋 Chi tiết bước
       </button>
       {open && (
         <div className="guide-panel">
@@ -429,6 +429,9 @@ function StepGuide({ guide, open, onToggle }: {
     </div>
   );
 }
+
+/** D-19: tập rỗng dùng cho ProcessDiagram ở chế độ xem (không click mở chi tiết). */
+const EMPTY_STEP_SET: Set<string> = new Set();
 
 function StepWorkCard({
   step,
@@ -511,72 +514,93 @@ function StepWorkCard({
     }
   };
 
+  const showStartRow = canOperate && step.state === 'PENDING';
+  const showCompleteRow = isMine && canOperate && step.state === 'IN_PROGRESS';
+  const canUpload = isMine && canOperate && step.state === 'IN_PROGRESS';
+  const showEvidence = step.evidence.length > 0 || canUpload;
+
   return (
     <div className={`exec-step st-${step.state === 'DONE' ? 'done' : step.state === 'IN_PROGRESS' ? 'progress' : 'pending'}${isMine ? ' mine' : ''}${blockedByOrder ? ' blocked' : ''}`}>
-      <span className="step-num" aria-hidden="true">{step.sortOrder}</span>
-      <div className="exec-step-head">
-        <div>
-          <code>{step.stepCode}</code>{' '}
-          <strong>{step.title}</strong>{' '}
+      {/* D-19: dòng 1 — badge số + mã — tên + chip trạng thái */}
+      <div className="step-card-head">
+        <span className="step-num" aria-hidden="true">{step.sortOrder}</span>
+        <div className="step-card-title">
+          <code>{step.stepCode}</code> — <strong>{step.title}</strong>{' '}
           <span className={`chip sm ${STEP_STATE_CHIP[step.state]}`}>
             {STEP_STATE_LABEL[step.state]}
           </span>{' '}
           {!step.required && <span className="chip sm muted">Tùy chọn</span>}
         </div>
-        <div className="exec-step-people muted">
-          👤 {step.performerName ?? 'Chưa phân công'}
-          {step.supervisorName ? ` · 🛡 ${step.supervisorName}` : ''}
-        </div>
       </div>
 
-      {guide && <StepGuide guide={guide} open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} />}
-
-      {step.evidence.length > 0 && (
-        <div className="ev-list">
-          {step.evidence.map((e) => (
-            <EvidenceThumb key={e.id} evidence={e} />
-          ))}
-        </div>
-      )}
-
-      {canOperate && step.state === 'PENDING' && (
-        <div className="step-work-actions">
-          {blockedByOrder && <span className="muted">🔒 Hoàn thành các bước trước để mở bước này.</span>}
-          {!blockedByOrder && isMine && (
-            <button type="button" className="btn-small primary" disabled={busy} onClick={() => post('start')}>
-              {busy ? 'Đang xử lý…' : '▶ Bắt đầu bước'}
+      {/* D-19: dòng 2 — nút hành động (giữ nguyên mọi điều kiện hiển thị) */}
+      {showStartRow && (
+        <div className="step-card-actions">
+          {!blockedByOrder && (isMine || unassigned) && (
+            <button
+              type="button"
+              className="btn-start"
+              disabled={busy}
+              onClick={isMine ? () => post('start') : startUnassigned}
+            >
+              {busy ? 'Đang xử lý…' : 'Bắt đầu'}
             </button>
           )}
-          {!blockedByOrder && unassigned && (
-            <button type="button" className="btn-small primary" disabled={busy} onClick={startUnassigned}>
-              {busy ? 'Đang xử lý…' : '▶ Bắt đầu'}
-            </button>
-          )}
-          <button type="button" className="btn-small" disabled={busy} onClick={() => setShowAssign(true)}>
+          <button type="button" className="btn-assign" disabled={busy} onClick={() => setShowAssign(true)}>
             👥 Phân công
           </button>
         </div>
       )}
-
-      {isMine && canOperate && step.state === 'IN_PROGRESS' && (
-        <div className="step-work-actions">
-          <EvidenceUpload
-            executionId={executionId}
-            stepId={step.id}
-            onUploaded={onChanged}
-          />
-          {needsPhoto && (
-            <p className="sec-desc warn-text">⚠ Bước này yêu cầu ảnh chụp (PRC-006) — phải tải ảnh lên trước khi hoàn thành.</p>
-          )}
+      {showCompleteRow && (
+        <div className="step-card-actions">
           <button
             type="button"
-            className="btn-small primary"
+            className="btn-start"
             disabled={busy || needsPhoto}
             onClick={() => post('complete')}
             title={needsPhoto ? 'Cần ảnh chụp trước' : undefined}
           >
             {busy ? 'Đang xử lý…' : '✓ Hoàn thành bước'}
           </button>
+        </div>
+      )}
+
+      {/* D-19: người thực hiện */}
+      <div className={`step-card-assignee${unassigned ? ' unassigned' : ''}`}>
+        {unassigned ? 'Chưa phân công' : `👤 ${step.performerName}`}
+        {step.supervisorName ? ` · 🛡 ${step.supervisorName}` : ''}
+      </div>
+      {blockedByOrder && step.state === 'PENDING' && (
+        <div className="muted">🔒 Hoàn thành các bước trước để mở bước này.</div>
+      )}
+
+      {/* D-19: chi tiết bước (collapse) */}
+      {guide && <StepGuide guide={guide} open={guideOpen} onToggle={() => setGuideOpen(!guideOpen)} />}
+
+      {/* D-19: khối bằng chứng */}
+      {showEvidence && (
+        <div className="step-evidence">
+          <div className="step-evidence-title">📷 Bằng chứng</div>
+          {step.evidence.length > 0 && (
+            <div className="ev-list">
+              {step.evidence.map((e) => (
+                <EvidenceThumb key={e.id} evidence={e} />
+              ))}
+            </div>
+          )}
+          {canUpload && (
+            <EvidenceUpload
+              executionId={executionId}
+              stepId={step.id}
+              onUploaded={onChanged}
+            />
+          )}
+          {showCompleteRow && needsPhoto && (
+            <p className="sec-desc warn-text">⚠ Bước này yêu cầu ảnh chụp (PRC-006) — phải tải ảnh lên trước khi hoàn thành.</p>
+          )}
+          {canUpload && (
+            <p className="sec-desc muted">Ảnh được nén trước khi tải lên (tối đa 5MB). Tệp: PDF, Word, Excel, tối đa 5MB.</p>
+          )}
         </div>
       )}
 
@@ -621,6 +645,8 @@ export function ExecutionDetail({
   const [guides, setGuides] = React.useState<Record<string, ProcessStepDto>>({});
   /** D-17: modal xác nhận hủy lượt (thay window.confirm). */
   const [cancelOpen, setCancelOpen] = React.useState(false);
+  /** D-19: chế độ xem bước — danh sách hoặc sơ đồ. */
+  const [stepsView, setStepsView] = React.useState<'list' | 'diagram'>('list');
   const canOperate = perms.includes('execution.operate');
 
   const load = React.useCallback(async () => {
@@ -917,24 +943,63 @@ export function ExecutionDetail({
       </section>
 
       <section className="section">
-        <h3>Các bước ({ex.steps.length})</h3>
-        <div className="exec-step-list">
-          {ex.steps.map((s) => (
-            <StepWorkCard
-              key={s.id}
-              step={s}
-              executionId={ex.id}
-              userId={userId}
-              canOperate={canOperate}
-              users={users}
-              positions={positions}
-              req={stepReqs[s.stepCode]}
-              blockedByOrder={ex.steps.some((p) => p.sortOrder < s.sortOrder && p.state !== 'DONE')}
-              guide={guides[s.stepCode]}
-              onChanged={load}
-            />
-          ))}
+        <div className="steps-head">
+          <h3>Các bước ({ex.steps.length})</h3>
+          <div className="seg-toggle" role="tablist" aria-label="Chế độ xem bước">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={stepsView === 'list'}
+              className={stepsView === 'list' ? 'active' : ''}
+              onClick={() => setStepsView('list')}
+            >
+              Danh sách
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={stepsView === 'diagram'}
+              className={stepsView === 'diagram' ? 'active' : ''}
+              onClick={() => setStepsView('diagram')}
+            >
+              Sơ đồ
+            </button>
+          </div>
         </div>
+        {stepsView === 'list' ? (
+          <div className="exec-step-list">
+            {ex.steps.map((s) => (
+              <StepWorkCard
+                key={s.id}
+                step={s}
+                executionId={ex.id}
+                userId={userId}
+                canOperate={canOperate}
+                users={users}
+                positions={positions}
+                req={stepReqs[s.stepCode]}
+                blockedByOrder={ex.steps.some((p) => p.sortOrder < s.sortOrder && p.state !== 'DONE')}
+                guide={guides[s.stepCode]}
+                onChanged={load}
+              />
+            ))}
+          </div>
+        ) : (
+          <ProcessDiagram
+            steps={
+              ex.steps.map((s) => ({
+                id: s.id,
+                code: s.stepCode,
+                title: s.title,
+                sortOrder: s.sortOrder,
+                required: s.required,
+                skip: s.skip,
+              })) as unknown as ProcessStepDto[]
+            }
+            openSteps={EMPTY_STEP_SET}
+            onToggle={() => {}}
+          />
+        )}
       </section>
 
       {cancelOpen && (
