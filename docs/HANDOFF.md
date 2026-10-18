@@ -1,5 +1,48 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-14 — thiết kế lại luồng tạo lượt thực hiện, subagent)
+
+### Đã làm
+
+1. **Migration 0008** (`apps/api/migrations/0008_execution_extras.sql`): `executions` thêm
+   `title`, `execution_date`, `execution_time`, `shift`, `main_performer_id`,
+   `supervisor_id` (nullable, tương thích lượt cũ). Đã apply D1 `giangdc-sop-demo`
+   (PRAGMA table_info xác nhận 6 cột mới).
+2. **Contract** (`packages/contracts/src/execution.ts`, single source):
+   `CreateExecutionBody` +7 trường D-14, `assignments` optional; mới `AssignStepBody`
+   và `ExecutionShift`; `ExecutionDto` +8 trường/tên hiển thị.
+3. **Domain** (`packages/domain/src/execution.ts`, test fail-first):
+   `normalizeExecutionCreate` (default ngày=hôm nay server, người tạo=người gọi;
+   validate YYYY-MM-DD/HH:MM/SANG|CHIEU|TOI), `checkStepAssignees`, `isValidShift`
+   — 12 test mới, **77/77 đạt**.
+4. **API** (`apps/api/src/executions.ts`, `executionDb.ts`):
+   - POST /executions: chuẩn hóa D-14, validate 3 user tồn tại/hoạt động, assignments
+     optional (bước thiếu gán = NULL), snapshot toàn bộ bước, INSERT kèm cột mới.
+     Idempotency-Key bắt buộc (đúng tên, không X-).
+   - MỚI POST /executions/:id/steps/:stepId/assign: quyền `execution.operate`,
+     tái kiểm tra chức vụ (khớp step_code với bản quy trình), chặn DONE/COMPLETED/
+     CANCELLED, audit `execution.step_assign`, Idempotency-Key bắt buộc.
+   - `EXECUTION_SELECT`/`toExecutionDto`: JOIN tên người thực hiện chính + giám sát.
+   - OpenAPI bổ sung `docs/openapi-t3-d14.yaml` (giữ nguyên `openapi-t3.yaml`).
+5. **Web** (`apps/web/src/executions.tsx`): `CreateExecutionForm` viết lại đơn giản
+   (không còn phân công từng bước trong form); `ExecutionDetail` hiện trường mới +
+   load yêu cầu chức vụ từ bản quy trình; `StepWorkCard` thêm nút "Bắt đầu"/"👥 Phân công";
+   `AssignStepDialog` mới ("Tên — Chức vụ", lọc theo vai trò bước, hint khi bước chưa
+   gắn chức vụ); bước chưa phân công: Bắt đầu tự gán cho người bấm nếu chức vụ khớp.
+   Giữ nguyên StepWorkCard chụp ảnh/bằng chứng.
+6. **Evidence:** `tsc --noEmit` ✓, eslint ✓, `pnpm test` **77/77**, web build ✓.
+   KHÔNG deploy, KHÔNG commit/push (theo task).
+
+### Chưa làm / chờ
+
+- **Deploy Worker + Pages + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-14** (cần parent agent — subagent không có live browser):
+  https://giangdc-sop-app.pages.dev (sau khi deploy) → "+ Tạo lượt" → form đơn giản
+  (chỉ quy trình có bản ACTIVE, ngày mặc định hôm nay) → Tạo → tự chuyển sang chi tiết →
+  bước "Chưa phân công" → "👥 Phân công" hiện "Tên — Chức vụ" → Bắt đầu/Hoàn thành.
+- Lưu ý: lượt demo cũ (TH-20261017-B4NE, TH-20261018-WMWZ...) có các trường D-14 = NULL,
+  UI hiện "—"/fallback (người thực hiện chính fallback = người tạo).
+
 ## Phiên 18/10/2026 (T3 — Lượt thực hiện + Chụp ảnh bằng chứng, subagent, D-12)
 
 ### Đã làm
