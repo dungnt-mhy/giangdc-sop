@@ -1,3 +1,43 @@
+# HANDOFF.md — Bàn giao phiên
+
+## Phiên 18/10/2026 (D-22 — hash-routing chống refresh về tổng quan, subagent)
+
+### Đã làm
+
+1. **Mới** `apps/web/src/hashRoute.ts`: type `Route`, `parseHash()` (hash lạ → overview),
+   `toHash()`, `setHash()` (chỉ gán khi khác hash hiện tại — chống vòng lặp hashchange).
+2. **Web** (`apps/web/src/App.tsx`): `HomePage` — `nav` khởi tạo từ `parseHash()`
+   (lưu ý key nav lượt là `'execution'`, hash là `#/executions`); `useEffect` lắng nghe
+   `hashchange` để đồng bộ khi back/forward; `goNav` đổi nav + hash (sidebar dùng goNav);
+   `openExecutionFromNotif` (chuông) gán `#/executions/{id}` — **xóa** `notifExecId` state
+   và prop `externalDetailId` (không còn ai truyền).
+3. **Web** (`apps/web/src/processes.tsx`): `viewToHash()`; `goView` (setView + setHash,
+   thay toàn bộ 8 chỗ `setView` cũ); `viewRef` so sánh trong handler hashchange để
+   không vòng lặp; `useEffect` khôi phục từ hash khi mount (refresh) và khi
+   back/forward — với edit/review thì `GET /versions/{versionId}` trước, trong lúc
+   fetch hiện "Đang tải…", version không tồn tại → fallback về detail.
+4. **Web** (`apps/web/src/executions.tsx`): `detailId` khởi tạo từ hash; `openDetail`
+   (mở/đóng chi tiết + đồng bộ hash, thay 3 chỗ `setDetailId`: click dòng, onDone tạo
+   lượt, onBack); `detailRef` + `hashchange` listener cho back/forward.
+5. **Evidence:** `pnpm --filter giangdc-sop-web build` pass;
+   `pnpm -r exec tsc --noEmit` 0 lỗi; `pnpm test` **108/108** (95 domain + 13 API).
+   KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy + push GitHub**: parent agent tự làm.
+- **Kiểm thử trình duyệt D-22** (cần parent agent — subagent không có live browser),
+  checklist trên https://giangdc-sop-app.pages.dev (sau deploy):
+  1. Mở chi tiết 1 quy trình → hash `#/processes/{id}` → **refresh** → vẫn ở chi tiết
+     (không về tổng quan).
+  2. Mở soạn thảo 1 bản → hash `#/processes/{id}/edit/{vid}` → refresh → vẫn ở màn
+     soạn thảo (có "Đang tải…" thoáng qua).
+  3. Mở chi tiết 1 lượt → hash `#/executions/{id}` → refresh → vẫn ở chi tiết lượt.
+  4. Back/forward trình duyệt chuyển đúng giữa list/detail/edit/review.
+  5. Bấm chuông thông báo → nhảy tới chi tiết lượt + hash cập nhật.
+- DECISIONS.md không đụng (fix kỹ thuật theo yêu cầu trực tiếp của user, không đổi
+  quyết định nghiệp vụ).
+
 ## Phiên 18/10/2026 (D-20d — Lịch sử phiên bản mobile dạng bảng ngang, subagent)
 
 ### Đã làm
