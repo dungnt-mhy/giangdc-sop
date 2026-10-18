@@ -1805,3 +1805,179 @@ img.logo-img {
   border: 1px dashed #cbd5e1; border-radius: 8px;
   font-size: 0.85rem; word-break: break-all;
 }
+
+/* ============ D-17: làm lại giao diện chi tiết lượt ============ */
+
+/* Nút ghost dùng chung cho modal */
+.btn-ghost {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-family: inherit;
+  cursor: pointer;
+  color: #334155;
+}
+.btn-ghost:hover { background: #f1f5f9; }
+
+/* Cụm nút hành động sticky ngay dưới header */
+.exec-actions-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  margin: 0.8rem 0;
+  box-shadow: 0 4px 16px rgba(8, 18, 38, 0.08);
+}
+.exec-actions-sticky:empty { display: none; }
+
+/* Meta gọn thành lưới */
+.exec-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem 1rem;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.8rem;
+}
+.exec-meta-item { min-width: 0; }
+.exec-meta-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.15rem;
+}
+.exec-meta-value { font-size: 0.88rem; font-weight: 600; color: #1e293b; word-break: break-word; }
+
+/* Timeline dọc nối các thẻ bước */
+.exec-step-list { position: relative; }
+.exec-step-list::before {
+  content: '';
+  position: absolute;
+  left: 1.85rem;
+  top: 1.6rem;
+  bottom: 1.6rem;
+  width: 2px;
+  background: #e2e8f0;
+  border-radius: 2px;
+}
+
+/* Thẻ bước: viền trái dày + màu theo trạng thái */
+.exec-step {
+  position: relative;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem 0.75rem 3.4rem;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(8, 18, 38, 0.04);
+}
+.exec-step.st-done { border-left-color: #16a34a; background: #f0fdf4; }
+.exec-step.st-progress { border-left-color: #2563eb; background: #eff6ff; }
+.exec-step.st-pending { border-left-color: #cbd5e1; background: #fff; }
+.exec-step.blocked { opacity: 0.75; }
+.exec-step.mine { border-color: #93b4f5; border-left-width: 4px; }
+.exec-step.mine.st-done { border-color: #86c99a; }
+.exec-step.mine.st-progress { border-color: #93b4f5; }
+
+/* Số thứ tự bước: badge tròn nổi trên timeline */
+.step-num {
+  position: absolute;
+  left: 0.85rem;
+  top: 0.85rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #475569;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(8, 18, 38, 0.12);
+  z-index: 1;
+}
+.st-done .step-num { background: #16a34a; color: #fff; }
+.st-progress .step-num { background: #2563eb; color: #fff; }
+
+/* Hướng dẫn chi tiết (collapse + scroll) */
+.step-guide { margin-top: 0.55rem; }
+.guide-toggle {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  color: #1d4ed8;
+  font-weight: 600;
+}
+.guide-toggle:hover { background: #e8eef7; }
+.guide-panel {
+  margin-top: 0.5rem;
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fbfdff;
+  border: 1px solid #dbe4f0;
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+}
+.guide-item + .guide-item { margin-top: 0.6rem; }
+.guide-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.2rem;
+}
+.guide-text { font-size: 0.86rem; color: #334155; white-space: pre-wrap; line-height: 1.55; }
+
+/* Bằng chứng: lưới thumbnail gọn */
+.ev-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 0.5rem;
+  margin: 0.6rem 0;
+}
+.ev-thumb { width: 100%; height: 76px; }
+.ev-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.3rem 0.55rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mobile */
+@media (max-width: 960px) {
+  /* Tránh đè lên mobile-topbar sticky (z-index 40) */
+  .exec-actions-sticky { top: 58px; border-radius: 10px; }
+  .exec-meta-grid { grid-template-columns: repeat(2, 1fr); }
+  .exec-step { padding-left: 3.1rem; }
+  .exec-step-list::before { left: 1.7rem; }
+  .step-num { left: 0.7rem; }
+}
