@@ -4,9 +4,15 @@
 import type {
   EvidenceDto,
   ExecutionDto,
+  ExecutionReviewAction,
+  ExecutionReviewDto,
   ExecutionStepDto,
 } from '@giangdc-sop/contracts';
 import { normalizeSkip } from './processDb.js';
+
+function newId(): string {
+  return crypto.randomUUID();
+}
 
 function safeJsonParse<T>(raw: string | null, fallback: T): T {
   try {
@@ -46,6 +52,8 @@ interface ExecutionRow {
   approved_by_name: string | null;
   approved_at: string | null;
   approval_note: string | null;
+  /** D-18: thời điểm bấm Bắt đầu lượt. */
+  started_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -97,7 +105,8 @@ const EXECUTION_SELECT = `
          e.approval_requested_by, e.approval_requested_at, e.approval_note,
          e.approved_by, e.approved_at,
          arb.display_name AS approval_requested_by_name,
-         ab.display_name AS approved_by_name
+         ab.display_name AS approved_by_name,
+         e.started_at
   FROM executions e
   JOIN processes p ON p.id = e.process_id
   JOIN process_versions pv ON pv.id = e.version_id
@@ -355,8 +364,59 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     approvedByName: row.approved_by_name,
     approvedAt: row.approved_at,
     approvalNote: row.approval_note,
+    startedAt: row.started_at,
+    reviews: await listExecutionReviews(db, row.id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [])),
   };
+}
+
+/* ---------- D-18: nhật ký duyệt lượt thực hiện ---------- */
+
+interface ExecutionReviewRow {
+  id: string;
+  action: string;
+  actor_id: string;
+  actor_name: string | null;
+  reason: string | null;
+  created_at: string;
+}
+
+function toExecutionReviewDto(r: ExecutionReviewRow): ExecutionReviewDto {
+  return {
+    id: r.id,
+    action: r.action as ExecutionReviewAction,
+    actorId: r.actor_id,
+    actorName: r.actor_name,
+    reason: r.reason,
+    createdAt: r.created_at,
+  };
+}
+
+/** Ghi một dòng nhật ký duyệt (gọi sau khi transition thành công). */
+export async function addExecutionReview(
+  db: D1Database,
+  input: { executionId: string; action: ExecutionReviewAction; actorId: string; reason?: string | null },
+): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO execution_reviews (id, execution_id, action, actor_id, reason, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+    )
+    .bind(newId(), input.executionId, input.action, input.actorId, input.reason ?? null, new Date().toISOString())
+    .run();
+}
+
+/** Nhật ký duyệt của lượt — mới nhất trước. */
+export async function listExecutionReviews(db: D1Database, executionId: string): Promise<ExecutionReviewDto[]> {
+  const rows = await db
+    .prepare(
+      `SELECT r.id, r.action, r.actor_id, u.display_name AS actor_name, r.reason, r.created_at
+       FROM execution_reviews r LEFT JOIN users u ON u.id = r.actor_id
+       WHERE r.execution_id = ?1 ORDER BY r.created_at DESC`,
+    )
+    .bind(executionId)
+    .all<ExecutionReviewRow>();
+  return (rows.results ?? []).map(toExecutionReviewDto);
 }
