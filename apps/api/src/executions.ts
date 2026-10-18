@@ -823,7 +823,7 @@ executionApp.post('/executions/:id/approve', requireAuth, async (c) => {
   });
 });
 
-/** POST /executions/:id/reject — từ chối xác nhận (D-16: PENDING_APPROVAL -> IN_PROGRESS, lý do bắt buộc). */
+/** POST /executions/:id/reject — từ chối xác nhận (D-16: PENDING_APPROVAL -> IN_PROGRESS, lý do bắt buộc; D-21: mode all/steps). */
 executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
   const body = await parseJson<RejectApprovalBody>(c);
   return withIdempotency(c, 'execution.reject', body, async () => {
@@ -839,22 +839,57 @@ executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
     if (!reason) {
       return { status: 400, body: errorBody('REASON_REQUIRED', 'Từ chối xác nhận phải ghi rõ lý do.', requestId) };
     }
+    // D-21: mode 'steps' — chỉ trả các bước DONE được chọn về làm lại.
+    const mode = body?.mode ?? 'all';
+    let stepIds: string[] | null = null;
+    if (mode === 'steps') {
+      const ids = Array.isArray(body?.stepIds) ? [...new Set(body.stepIds.filter((x) => typeof x === 'string'))] : [];
+      if (ids.length === 0) {
+        return { status: 400, body: errorBody('STEP_IDS_REQUIRED', 'Chọn ít nhất một bước cần làm lại.', requestId) };
+      }
+      const steps = await getExecutionSteps(c.env.DB, row.id);
+      const byId = new Map(steps.map((s) => [s.id, s]));
+      for (const sid of ids) {
+        const st = byId.get(sid);
+        if (!st) {
+          return { status: 404, body: errorBody('STEP_NOT_FOUND', 'Không tìm thấy bước trong lượt.', requestId) };
+        }
+        if (st.state !== 'DONE') {
+          return { status: 409, body: errorBody('STEP_NOT_DONE', `Bước ${st.step_code} chưa hoàn thành, không thể trả làm lại.`, requestId) };
+        }
+      }
+      stepIds = ids;
+    } else if (mode !== 'all') {
+      return { status: 400, body: errorBody('INVALID_MODE', "mode phải là 'all' hoặc 'steps'.", requestId) };
+    }
     const now = new Date().toISOString();
     const res = await doTransition(c.env.DB, row, session, requestId, 'IN_PROGRESS', 'execution.reject', {
       setSql: 'approved_by = ?3, approved_at = ?4, approval_note = ?5',
       binds: [session.user_id, now, reason],
     });
     if (res.status === 200) {
-      // D-18: lưu vết từ chối xác nhận (kèm lý do) vào nhật ký duyệt.
+      // D-21: reset các bước bị trả về PENDING (giữ evidence), audit từng bước.
+      if (stepIds) {
+        for (const sid of stepIds) {
+          await c.env.DB.prepare(
+            `UPDATE execution_steps SET state = 'PENDING', started_at = NULL, completed_at = NULL WHERE id = ?1`,
+          ).bind(sid).run();
+          await writeAudit(c.env.DB, {
+            id: newId(), actorId: session.user_id, action: 'execution.step_redo',
+            objectType: 'execution_step', objectId: sid, reason, requestId,
+          });
+        }
+      }
+      // D-18: lưu vết từ chối xác nhận (kèm lý do + step_ids) vào nhật ký duyệt.
       await addExecutionReview(c.env.DB, {
-        executionId: row.id, action: 'reject', actorId: session.user_id, reason,
+        executionId: row.id, action: 'reject', actorId: session.user_id, reason, stepIds,
       });
       // D-15/D-16: báo cho người đã báo hoàn thành (fallback người tạo).
       const target = row.approval_requested_by ?? row.created_by;
       if (target !== session.user_id) {
         await createNotification(
           c.env.DB, target, 'execution.rejected',
-          `Lượt ${row.code} bị từ chối xác nhận`,
+          stepIds ? `Lượt ${row.code} bị trả lại ${stepIds.length} bước làm lại` : `Lượt ${row.code} bị từ chối xác nhận`,
           `Lý do: ${reason}`,
           'execution', row.id,
         );
