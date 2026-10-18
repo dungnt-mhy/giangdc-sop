@@ -301,6 +301,7 @@ export function toEvidenceDto(r: EvidenceRow): EvidenceDto {
 export function toExecutionStepDto(
   r: ExecutionStepRow,
   evidence: EvidenceDto[],
+  redoCount = 0,
 ): ExecutionStepDto {
   return {
     id: r.id,
@@ -319,6 +320,7 @@ export function toExecutionStepDto(
     completion: safeJsonParse(r.completion_json, []),
     skip: normalizeSkip(safeJsonParse(r.skip_json, null)),
     evidence,
+    redoCount,
   };
 }
 
@@ -334,6 +336,18 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     list.push(toEvidenceDto(ev));
     byStep.set(ev.execution_step_id, list);
   }
+  const reviews = await listExecutionReviews(db, row.id);
+  // D-21: redoCount từng bước + rejectedStepCount từ nhật ký reject theo bước.
+  const redoCountByStep = new Map<string, number>();
+  for (const r of reviews) {
+    if (r.action !== 'reject' || !r.stepIds) continue;
+    for (const sid of r.stepIds) {
+      redoCountByStep.set(sid, (redoCountByStep.get(sid) ?? 0) + 1);
+    }
+  }
+  const latest = reviews[0];
+  const rejectedStepCount =
+    latest && latest.action === 'reject' && latest.stepIds ? latest.stepIds.length : 0;
   return {
     id: row.id,
     code: row.code,
@@ -365,10 +379,11 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     approvedAt: row.approved_at,
     approvalNote: row.approval_note,
     startedAt: row.started_at,
-    reviews: await listExecutionReviews(db, row.id),
+    reviews,
+    rejectedStepCount,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [])),
+    steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [], redoCountByStep.get(s.id) ?? 0)),
   };
 }
 
@@ -380,7 +395,18 @@ interface ExecutionReviewRow {
   actor_id: string;
   actor_name: string | null;
   reason: string | null;
+  step_ids: string | null;
   created_at: string;
+}
+
+function parseStepIds(raw: string | null): string[] | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x) => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
 }
 
 function toExecutionReviewDto(r: ExecutionReviewRow): ExecutionReviewDto {
@@ -390,6 +416,7 @@ function toExecutionReviewDto(r: ExecutionReviewRow): ExecutionReviewDto {
     actorId: r.actor_id,
     actorName: r.actor_name,
     reason: r.reason,
+    stepIds: parseStepIds(r.step_ids),
     createdAt: r.created_at,
   };
 }
@@ -397,14 +424,17 @@ function toExecutionReviewDto(r: ExecutionReviewRow): ExecutionReviewDto {
 /** Ghi một dòng nhật ký duyệt (gọi sau khi transition thành công). */
 export async function addExecutionReview(
   db: D1Database,
-  input: { executionId: string; action: ExecutionReviewAction; actorId: string; reason?: string | null },
+  input: { executionId: string; action: ExecutionReviewAction; actorId: string; reason?: string | null; stepIds?: string[] | null },
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO execution_reviews (id, execution_id, action, actor_id, reason, created_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
+      `INSERT INTO execution_reviews (id, execution_id, action, actor_id, reason, step_ids, created_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`,
     )
-    .bind(newId(), input.executionId, input.action, input.actorId, input.reason ?? null, new Date().toISOString())
+    .bind(
+      newId(), input.executionId, input.action, input.actorId, input.reason ?? null,
+      input.stepIds ? JSON.stringify(input.stepIds) : null, new Date().toISOString(),
+    )
     .run();
 }
 
@@ -412,7 +442,7 @@ export async function addExecutionReview(
 export async function listExecutionReviews(db: D1Database, executionId: string): Promise<ExecutionReviewDto[]> {
   const rows = await db
     .prepare(
-      `SELECT r.id, r.action, r.actor_id, u.display_name AS actor_name, r.reason, r.created_at
+      `SELECT r.id, r.action, r.actor_id, u.display_name AS actor_name, r.reason, r.step_ids, r.created_at
        FROM execution_reviews r LEFT JOIN users u ON u.id = r.actor_id
        WHERE r.execution_id = ?1 ORDER BY r.created_at DESC`,
     )
