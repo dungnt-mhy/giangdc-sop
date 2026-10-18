@@ -2241,3 +2241,59 @@ img.logo-img {
   background: #fbfdff;
 }
 .reject-steps .check { margin: 0; font-weight: 500; }
+
+/* ---------- T5: Ngoại lệ ---------- */
+.ex-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.ex-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--muted);
+  border-radius: 10px;
+  padding: 0.8rem 1rem;
+}
+.ex-card.sev-low { border-left-color: #6b7280; }
+.ex-card.sev-medium { border-left-color: #f59e0b; }
+.ex-card.sev-high { border-left-color: #ef4444; }
+.ex-card.sev-blocking { border-left-color: #dc2626; background: #fef2f2; }
+.ex-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.4rem;
+}
+.ex-title {
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+.ex-desc {
+  color: var(--text);
+  margin-bottom: 0.4rem;
+  white-space: pre-wrap;
+}
+.ex-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+.ex-resolution {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+.ex-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.chip.sev-low { background: #f3f4f6; color: #374151; }
+.chip.sev-medium { background: #fef3c7; color: #92400e; }
+.chip.sev-high { background: #fee2e2; color: #991b1b; }
+.chip.sev-blocking { background: #dc2626; color: #fff; font-weight: 700; }
