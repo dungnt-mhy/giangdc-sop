@@ -1658,13 +1658,29 @@ img.logo-img {
 
   .proc-head {
     flex-direction: column;
+    align-items: stretch;
   }
-
+  .proc-head > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .proc-head .btn-primary {
+    max-width: 100%;
+    white-space: normal;
+  }
   /* Màn chi tiết quy trình vừa khít mobile: chặn tràn ngang ở cấp trang,
      chỉ bảng Lịch sử phiên bản (.ver-timeline) được cuộn ngang riêng. */
   .main {
-    overflow-x: clip;
+    overflow-x: hidden;
+    max-width: 100vw;
     padding: 1.2rem 1rem 3rem;
+  }
+  .section {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .page-sub {
+    overflow-wrap: break-word;
   }
 }
 
