@@ -17,10 +17,17 @@ import {
 } from '@giangdc-sop/domain';
 import type {
   AssignStepBody,
+  CreateExceptionBody,
   CreateExecutionBody,
+  ExceptionDto,
+  ExceptionHandleAction,
+  ExceptionSeverity,
+  ExceptionStatus,
   ExecutionDto,
   ExecutionState,
+  HandleExceptionBody,
   RejectApprovalBody,
+  ResolveExceptionBody,
 } from '@giangdc-sop/contracts';
 import {
   addExecutionReview,
@@ -1018,6 +1025,206 @@ executionApp.get('/evidence/:id', requireAuth, requirePermission('execution.view
   });
 });
 
+/* ---------- Ngoại lệ & làm lại (T5, EXP-001..006) ---------- */
+
+/** POST /executions/:id/steps/:stepId/fail — báo "Không đạt", tạo ngoại lệ (EXP-001, EXP-002). */
+executionApp.post('/executions/:id/steps/:stepId/fail', requireAuth, requirePermission('execution.operate' as Permission), async (c) => {
+  const body = await parseJson<CreateExceptionBody>(c);
+  return withIdempotency(c, 'execution.step.fail', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const execRow = await findExecution(c.env.DB, c.req.param('id'));
+    if (!execRow) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId) };
+    }
+    const scopeCheck = await checkExecutionScope(c, execRow.org_unit_id, execRow.id);
+    if (!scopeCheck.ok) return { status: 403, body: errorBody('FORBIDDEN_SCOPE', 'Ngoài phạm vi dữ liệu.', requestId) };
+    if (execRow.state !== 'IN_PROGRESS') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Chỉ báo Không đạt khi lượt đang thực hiện.', requestId) };
+    }
+    const step = await findExecutionStep(c.env.DB, execRow.id, c.req.param('stepId'));
+    if (!step) {
+      return { status: 404, body: errorBody('STEP_NOT_FOUND', 'Không tìm thấy bước.', requestId) };
+    }
+    if (!body || !body.title?.trim() || !body.description?.trim()) {
+      return { status: 400, body: errorBody('INVALID_REQUEST', 'Cần tiêu đề và mô tả ngoại lệ.', requestId) };
+    }
+    const severity = body.severity;
+    if (!['LOW', 'MEDIUM', 'HIGH', 'BLOCKING'].includes(severity)) {
+      return { status: 400, body: errorBody('INVALID_SEVERITY', 'Mức độ không hợp lệ.', requestId) };
+    }
+    // EXP-001: snapshot dữ liệu bước tại thời điểm phát hiện.
+    const snapshot = JSON.stringify({
+      stepCode: step.step_code,
+      title: step.title,
+      state: step.state,
+      attemptNo: step.attempt_no ?? 1,
+      performerUserId: step.performer_user_id,
+      startedAt: step.started_at,
+      at: new Date().toISOString(),
+    });
+    const exId = newId();
+    await c.env.DB.prepare(
+      `INSERT INTO exceptions (id, execution_id, execution_step_id, severity, status, title, description, snapshot_json, created_by)
+       VALUES (?1,?2,?3,?4,'OPEN',?5,?6,?7,?8)`,
+    ).bind(exId, execRow.id, step.id, severity, body.title.trim(), body.description.trim(), snapshot, session.user_id).run();
+    // EXP-002: BLOCKING tự động chặn lượt.
+    if (severity === 'BLOCKING') {
+      await c.env.DB.prepare(`UPDATE executions SET state='BLOCKED', updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?1`)
+        .bind(execRow.id).run();
+    }
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: 'execution.exception.create',
+      objectType: 'exception', objectId: exId, reason: body.title.trim(), requestId,
+    });
+    return { status: 201, body: { exception: await findExceptionDto(c.env.DB, exId) } };
+  });
+});
+
+/** GET /executions/:id/exceptions — danh sách ngoại lệ của lượt. */
+executionApp.get('/executions/:id/exceptions', requireAuth, requirePermission('execution.view'), async (c) => {
+  const requestId = c.get('requestId') as string;
+  const execRow = await findExecution(c.env.DB, c.req.param('id'));
+  if (!execRow) {
+    return c.json(errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId), 404);
+  }
+  const scopeCheck = await checkExecutionScope(c, execRow.org_unit_id, execRow.id);
+  if (!scopeCheck.ok) return scopeCheck.response;
+  const list = await listExceptionDtos(c.env.DB, execRow.id);
+  return c.json({ exceptions: list });
+});
+
+/** POST /exceptions/:id/handle — giám sát xử lý: làm lại / tiếp tục có điều kiện / hủy / leo thang (EXP-003, EXP-004). */
+executionApp.post('/exceptions/:id/handle', requireAuth, requirePermission('execution.operate' as Permission), async (c) => {
+  const body = await parseJson<HandleExceptionBody>(c);
+  return withIdempotency(c, 'execution.exception.handle', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const ex = await findExceptionRow(c.env.DB, c.req.param('id'));
+    if (!ex) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy ngoại lệ.', requestId) };
+    }
+    if (ex.status !== 'OPEN' && ex.status !== 'ESCALATED') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Ngoại lệ đã được xử lý.', requestId) };
+    }
+    const action = body?.action;
+    if (!['REWORK', 'CONDITIONAL_CONTINUE', 'CANCEL', 'ESCALATE'].includes(action ?? '')) {
+      return { status: 400, body: errorBody('INVALID_ACTION', 'Hành động không hợp lệ.', requestId) };
+    }
+    const execRow = await findExecution(c.env.DB, ex.execution_id);
+    if (!execRow) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId) };
+    }
+    const scopeCheck = await checkExecutionScope(c, execRow.org_unit_id, execRow.id);
+    if (!scopeCheck.ok) return { status: 403, body: errorBody('FORBIDDEN_SCOPE', 'Ngoài phạm vi dữ liệu.', requestId) };
+
+    const now = new Date().toISOString();
+    let newStatus: string = ex.status;
+
+    if (action === 'REWORK') {
+      // EXP-004: giữ attempt cũ (lịch sử trong bảng exceptions), tăng attempt_no, đưa bước về PENDING.
+      newStatus = 'IN_REMEDIATION';
+      const step = await findExecutionStep(c.env.DB, ex.execution_id, ex.execution_step_id);
+      const nextAttempt = (step?.attempt_no ?? 1) + 1;
+      await c.env.DB.prepare(
+        `UPDATE execution_steps SET state='PENDING', attempt_no=?1, started_at=NULL, completed_at=NULL WHERE id=?2`,
+      ).bind(nextAttempt, ex.execution_step_id).run();
+      // Nếu lượt đang BLOCKED do ngoại lệ này, mở lại để làm lại.
+      if (execRow.state === 'BLOCKED') {
+        await c.env.DB.prepare(`UPDATE executions SET state='IN_PROGRESS', updated_at=?1 WHERE id=?2`)
+          .bind(now, execRow.id).run();
+      }
+    } else if (action === 'CONDITIONAL_CONTINUE') {
+      // EXP-003: tiếp tục có điều kiện — bước coi như xong, ngoại lệ ghi nhận.
+      newStatus = 'CONDITIONAL_CONTINUE';
+      await c.env.DB.prepare(
+        `UPDATE execution_steps SET state='DONE', completed_at=?1 WHERE id=?2`,
+      ).bind(now, ex.execution_step_id).run();
+      if (execRow.state === 'BLOCKED') {
+        const stillBlocked = await hasOpenBlockingException(c.env.DB, execRow.id, ex.id);
+        if (!stillBlocked) {
+          await c.env.DB.prepare(`UPDATE executions SET state='IN_PROGRESS', updated_at=?1 WHERE id=?2`)
+            .bind(now, execRow.id).run();
+        }
+      }
+    } else if (action === 'CANCEL') {
+      newStatus = 'CANCELLED';
+      if (execRow.state === 'BLOCKED') {
+        const stillBlocked = await hasOpenBlockingException(c.env.DB, execRow.id, ex.id);
+        if (!stillBlocked) {
+          await c.env.DB.prepare(`UPDATE executions SET state='IN_PROGRESS', updated_at=?1 WHERE id=?2`)
+            .bind(now, execRow.id).run();
+        }
+      }
+    } else if (action === 'ESCALATE') {
+      // EXP-003: leo thang — đổi người xử lý/cấp duyệt, có audit.
+      if (!body?.escalateTo?.trim()) {
+        return { status: 400, body: errorBody('INVALID_REQUEST', 'Cần chỉ định người leo thang tới.', requestId) };
+      }
+      const target = await findActiveUser(c.env.DB, body.escalateTo.trim());
+      if (!target) {
+        return { status: 404, body: errorBody('USER_NOT_FOUND', 'Không tìm thấy người dùng leo thang.', requestId) };
+      }
+      newStatus = 'ESCALATED';
+      await c.env.DB.prepare(
+        `UPDATE exceptions SET escalated_to=?1, escalated_at=?2, escalate_reason=?3 WHERE id=?4`,
+      ).bind(target.id, now, body.escalateReason?.trim() || null, ex.id).run();
+    }
+
+    await c.env.DB.prepare(
+      `UPDATE exceptions SET status=?1, handled_by=?2, handled_at=?3, handle_action=?4, handle_note=?5 WHERE id=?6`,
+    ).bind(newStatus, session.user_id, now, action, body?.note?.trim() || null, ex.id).run();
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: `execution.exception.${String(action).toLowerCase()}`,
+      objectType: 'exception', objectId: ex.id, reason: body?.note?.trim() || undefined, requestId,
+    });
+    return { status: 200, body: { exception: await findExceptionDto(c.env.DB, ex.id) } };
+  });
+});
+
+/** POST /exceptions/:id/resolve — đóng ngoại lệ, cần mô tả khắc phục (EXP-005). */
+executionApp.post('/exceptions/:id/resolve', requireAuth, requirePermission('execution.operate' as Permission), async (c) => {
+  const body = await parseJson<ResolveExceptionBody>(c);
+  return withIdempotency(c, 'execution.exception.resolve', body, async () => {
+    const requestId = c.get('requestId') as string;
+    const session = c.get('session') as AuthSession;
+    const ex = await findExceptionRow(c.env.DB, c.req.param('id'));
+    if (!ex) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy ngoại lệ.', requestId) };
+    }
+    if (ex.status === 'RESOLVED' || ex.status === 'CANCELLED') {
+      return { status: 409, body: errorBody('INVALID_STATE', 'Ngoại lệ đã đóng.', requestId) };
+    }
+    if (!body?.resolution?.trim()) {
+      return { status: 400, body: errorBody('INVALID_REQUEST', 'Cần mô tả cách khắc phục (EXP-005).', requestId) };
+    }
+    const execRow = await findExecution(c.env.DB, ex.execution_id);
+    if (!execRow) {
+      return { status: 404, body: errorBody('NOT_FOUND', 'Không tìm thấy lượt thực hiện.', requestId) };
+    }
+    const scopeCheck = await checkExecutionScope(c, execRow.org_unit_id, execRow.id);
+    if (!scopeCheck.ok) return { status: 403, body: errorBody('FORBIDDEN_SCOPE', 'Ngoài phạm vi dữ liệu.', requestId) };
+
+    const now = new Date().toISOString();
+    await c.env.DB.prepare(
+      `UPDATE exceptions SET status='RESOLVED', resolution=?1, resolved_by=?2, resolved_at=?3 WHERE id=?4`,
+    ).bind(body.resolution.trim(), session.user_id, now, ex.id).run();
+    // Nếu không còn ngoại lệ BLOCKING mở, mở chặn lượt.
+    if (execRow.state === 'BLOCKED') {
+      const stillBlocked = await hasOpenBlockingException(c.env.DB, execRow.id, ex.id);
+      if (!stillBlocked) {
+        await c.env.DB.prepare(`UPDATE executions SET state='IN_PROGRESS', updated_at=?1 WHERE id=?2`)
+          .bind(now, execRow.id).run();
+      }
+    }
+    await writeAudit(c.env.DB, {
+      id: newId(), actorId: session.user_id, action: 'execution.exception.resolve',
+      objectType: 'exception', objectId: ex.id, reason: body.resolution.trim().slice(0, 200), requestId,
+    });
+    return { status: 200, body: { exception: await findExceptionDto(c.env.DB, ex.id) } };
+  });
+});
+
 /* ---------- Helpers nội bộ ---------- */
 
 /* ---------- Helpers nội bộ ---------- */
@@ -1029,4 +1236,93 @@ function safeJsonParseCompletion(raw: string | null): { kind: string; required: 
   } catch {
     return [];
   }
+}
+
+/* ---------- Helpers ngoại lệ (T5) ---------- */
+
+interface ExceptionRow {
+  id: string;
+  execution_id: string;
+  execution_step_id: string;
+  severity: string;
+  status: string;
+  title: string;
+  description: string;
+  snapshot_json: string | null;
+  created_by: string;
+  created_at: string;
+  handled_by: string | null;
+  handled_at: string | null;
+  handle_action: string | null;
+  handle_note: string | null;
+  resolution: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  escalated_to: string | null;
+  escalated_at: string | null;
+  escalate_reason: string | null;
+}
+
+async function findExceptionRow(db: D1Database, id: string): Promise<ExceptionRow | null> {
+  const row = await db.prepare(`SELECT * FROM exceptions WHERE id=?1`).bind(id).first<ExceptionRow>();
+  return row ?? null;
+}
+
+async function findExceptionDto(db: D1Database, id: string): Promise<ExceptionDto | null> {
+  const ex = await findExceptionRow(db, id);
+  if (!ex) return null;
+  const step = await db.prepare(`SELECT step_code, title FROM execution_steps WHERE id=?1`)
+    .bind(ex.execution_step_id).first<{ step_code: string; title: string }>();
+  const names = await db.prepare(
+    `SELECT id, full_name FROM users WHERE id IN (?1,?2,?3,?4,?5)`,
+  ).bind(ex.created_by, ex.handled_by, ex.resolved_by, ex.escalated_to, ex.created_by).all<{ id: string; full_name: string }>();
+  const nameMap = new Map((names.results ?? []).map((u) => [u.id, u.full_name]));
+  return {
+    id: ex.id,
+    executionId: ex.execution_id,
+    executionStepId: ex.execution_step_id,
+    stepCode: step?.step_code ?? '',
+    stepTitle: step?.title ?? '',
+    severity: ex.severity as ExceptionSeverity,
+    status: ex.status as ExceptionStatus,
+    title: ex.title,
+    description: ex.description,
+    snapshotJson: ex.snapshot_json,
+    createdBy: ex.created_by,
+    createdByName: nameMap.get(ex.created_by) ?? null,
+    createdAt: ex.created_at,
+    handledBy: ex.handled_by,
+    handledByName: ex.handled_by ? (nameMap.get(ex.handled_by) ?? null) : null,
+    handledAt: ex.handled_at,
+    handleAction: ex.handle_action as ExceptionHandleAction | null,
+    handleNote: ex.handle_note,
+    resolution: ex.resolution,
+    resolvedBy: ex.resolved_by,
+    resolvedByName: ex.resolved_by ? (nameMap.get(ex.resolved_by) ?? null) : null,
+    resolvedAt: ex.resolved_at,
+    escalatedTo: ex.escalated_to,
+    escalatedToName: ex.escalated_to ? (nameMap.get(ex.escalated_to) ?? null) : null,
+    escalatedAt: ex.escalated_at,
+    escalateReason: ex.escalate_reason,
+  };
+}
+
+async function listExceptionDtos(db: D1Database, executionId: string): Promise<ExceptionDto[]> {
+  const rows = await db.prepare(
+    `SELECT id FROM exceptions WHERE execution_id=?1 ORDER BY created_at DESC`,
+  ).bind(executionId).all<{ id: string }>();
+  const list: ExceptionDto[] = [];
+  for (const r of rows.results ?? []) {
+    const dto = await findExceptionDto(db, r.id);
+    if (dto) list.push(dto);
+  }
+  return list;
+}
+
+async function hasOpenBlockingException(db: D1Database, executionId: string, excludeId?: string): Promise<boolean> {
+  const row = await db.prepare(
+    `SELECT 1 FROM exceptions WHERE execution_id=?1 AND severity='BLOCKING'
+     AND status IN ('OPEN','IN_REMEDIATION','ESCALATED') AND id != ?2 LIMIT 1`,
+  ).bind(executionId, excludeId ?? '').first();
+  return !!row;
 }
