@@ -1,8 +1,31 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (D-16 hoàn thành).
+Cập nhật: 18/10/2026 (D-17 hoàn thành code, chờ deploy + kiểm thử trình duyệt).
 
 ## Đã verified
+
+- **D-17: làm lại giao diện chi tiết lượt — HOÀN THÀNH CODE 18/10/2026 (subagent, user duyệt "Ok").**
+  - Web (`apps/web/src/executions.tsx`, `index.css`) — chỉ UI, không đụng API/migration:
+    1. **Nút lên đầu (sticky):** cụm nút hành động theo trạng thái chuyển lên ngay dưới
+       `.proc-head`, bọc `.exec-actions-sticky` (`position: sticky; top: 0`, z-index 30,
+       nền trắng blur + bóng đổ); mobile offset `top: 58px` để không đè mobile-topbar
+       (z-index 40). Logic hiển thị theo trạng thái + quyền giữ nguyên.
+    2. **Popup thay window.confirm:** nút "Hủy lượt" mở modal trong app (nền mờ,
+       "← Hủy bỏ" / "Xác nhận hủy" danger); hết `window.confirm`/`window.alert` trong file.
+    3. **"📖 Xem hướng dẫn chi tiết" từng bước:** `load()` tái dùng response
+       `GET /versions/:versionId` (có sẵn) build map `guides` theo stepCode →
+       `StepWorkCard` prop `guide: ProcessStepDto`; component `StepGuide` collapse,
+       panel `max-height: 240px; overflow-y: auto`, hiện các mục có nội dung:
+       Điều kiện tiên quyết / Đầu vào / Hướng dẫn thực hiện / Kết quả mong đợi /
+       Đầu ra / Ghi chú / ⚠ Cảnh báo (giữ xuống dòng, `white-space: pre-wrap`).
+    4. **Làm đẹp:** `.exec-step` viền trái 4px + nền theo trạng thái
+       (DONE xanh lá #16a34a/#f0fdf4; IN_PROGRESS xanh dương #2563eb/#eff6ff;
+       PENDING xám; `blocked` mờ 75%); badge tròn `.step-num` theo sortOrder nổi trên
+       timeline dọc (`.exec-step-list::before`); `.ev-list` thành lưới thumbnail;
+       FILE render chip 📎 + tên file (trước đây ảnh vỡ); meta gọn thành
+       `.exec-meta-grid` 3 cột (mobile 2 cột); định nghĩa `.btn-ghost` còn thiếu.
+  - Build: `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **93/93**, web build ✓.
+  - Chưa deploy/commit/push (parent tự làm); kiểm thử trình duyệt chờ parent agent.
 
 - **D-16: bước tuần tự + Báo/Xác nhận hoàn thành — HOÀN THÀNH 18/10/2026 (subagent, user duyệt "Ok").**
   - Domain (`packages/domain/src/execution.ts`): mới `canStartStepByOrder(steps, targetSortOrder)` —
