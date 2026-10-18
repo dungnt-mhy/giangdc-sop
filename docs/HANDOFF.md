@@ -1,5 +1,54 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-18 — nhật ký duyệt + Thông tin lượt công việc, subagent)
+
+### Đã làm
+
+1. **Migration 0011** (`apps/api/migrations/0011_execution_reviews.sql`, CHƯA apply D1 —
+   parent apply trước khi test): bảng `execution_reviews` (CHECK action 4 giá trị,
+   FK CASCADE executions, FK users, index) + `ALTER TABLE executions ADD COLUMN started_at`.
+2. **Contract** (`packages/contracts/src/execution.ts`, single source):
+   `ExecutionReviewAction`, `ExecutionReviewDto`, `REVIEW_ACTION_LABEL` (vi);
+   `ExecutionDto` +`startedAt`, +`reviews`.
+3. **API** (`apps/api/src/executionDb.ts`, `executions.ts`):
+   `addExecutionReview`/`listExecutionReviews`/`toExecutionReviewDto` (JOIN users);
+   EXECUTION_SELECT +`e.started_at`; `toExecutionDto` +`startedAt`/`reviews`;
+   `/start` set `started_at`; `/submit`→review 'submit', `/approve`→'approve',
+   `/reject`→'reject'+reason, `/cancel-submit`→'cancel_submit' (sau transition 200).
+   OpenAPI mới `docs/openapi-d18.yaml`.
+4. **Web** (`apps/web/src/executions.tsx`, `index.css`): section `.exec-info`
+   "Thông tin lượt công việc" (thay `exec-meta-grid`+`exec-progress` cũ, xóa `metaItems`):
+   Trạng thái + badge "🔄 Bị trả lại làm lại" (review mới nhất reject & IN_PROGRESS);
+   "Lịch sử từ chối (N lần)" (Lần 1..N, người/giờ vi-VN/lý do, không raw ISO);
+   Quy trình, Ngày thực hiện (dự kiến), Bắt đầu lúc (startedAt, "—" nếu null),
+   Người tạo, Người thực hiện chính, Người duyệt (supervisor ?? approvedBy, conditional),
+   vết Báo/Xác nhận gần nhất từ reviews, Đơn vị, Ghi chú, Tiến độ bar + "X/Y bước (Z%)".
+   CSS mới cuối `index.css` (khối D-18): `.exec-info`, `.info-label/.info-value`,
+   `.reject-list/.reject-item/.reject-head`.
+5. **Evidence:** `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **97/97** (93 cũ + 4 mới
+   `apps/api/src/executionReviews.test.ts` với fake D1).
+   KHÔNG apply migration, KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Apply migration 0011 lên D1** `giangdc-sop-demo` (parent làm TRƯỚC khi deploy/test):
+  bảng execution_reviews + cột executions.started_at. Lưu ý: `EXECUTION_SELECT` đã
+  SELECT `e.started_at` — API sẽ lỗi "no such column" nếu deploy trước khi apply migration.
+- **Deploy Worker + Pages + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-18** (cần parent agent — subagent không có live browser),
+  gợi ý checklist trên https://giangdc-sop-app.pages.dev (sau deploy):
+  1. Tạo lượt mới → chi tiết: mục "Thông tin lượt công việc" hiện đủ các dòng
+     (Quy trình, Ngày thực hiện (dự kiến), Bắt đầu lúc = "—", Người tạo, Người thực
+     hiện chính, Người duyệt nếu có, Tiến độ "0/N bước (0%)"); chưa có Lịch sử từ chối.
+  2. [▶ Bắt đầu] → "Bắt đầu lúc" hiện giờ bắt đầu (giờ VN).
+  3. Hoàn thành các bước → [📤 Báo hoàn thành] → xuất hiện dòng "Báo hoàn thành:
+     📤 {tên} · {giờ}"; chip "Chờ xác nhận".
+  4. Login người duyệt → [✕ Từ chối] (nhập lý do) → lượt về "Đang thực hiện" +
+     badge "🔄 Bị trả lại làm lại" + "Lịch sử từ chối (1 lần)" hiện Lần 1 (người, giờ, lý do).
+  5. Báo hoàn thành lại → từ chối lần 2 → "Lịch sử từ chối (2 lần)" (Lần 1 cũ, Lần 2 mới).
+  6. [✓ Xác nhận hoàn thành] → chip "Hoàn thành" + dòng "Xác nhận hoàn thành: ✓ {tên} · {giờ}".
+- Lưu ý: lượt demo cũ (startedAt NULL, reviews rỗng) vẫn hiển thị bình thường.
+
 ## Phiên 18/10/2026 (D-17 — làm lại giao diện chi tiết lượt, subagent)
 
 ### Đã làm
