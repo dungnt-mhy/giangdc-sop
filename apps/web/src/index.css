@@ -1172,6 +1172,9 @@ img.logo-img {
 .vbadge.st-active { background: #b2f2bb; color: #0b6b32; font-weight: 800; }
 .vbadge.st-superseded { background: #f1f3f5; color: #495057; }
 .vbadge.st-retired { background: #ffe3e3; color: #c92a2a; }
+.vbadge.st-void { background: #e9ecef; color: #343a40; text-decoration: line-through; }
+/* D-20b: dòng vết hủy bỏ bản (thời điểm + lý do). */
+.ver-void { margin-top: 4px; font-size: 0.82rem; color: #868e96; }
 
 .btn-small {
   font-size: 0.82rem;
@@ -2126,3 +2129,16 @@ img.logo-img {
 }
 .step-evidence .ev-btn-row { margin-bottom: 0.4rem; }
 .step-evidence .sec-desc { margin: 0.35rem 0 0; }
+
+/* D-21: chọn bước làm lại trong dialog Từ chối */
+.reject-steps {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  display: grid;
+  gap: 0.35rem;
+  background: #fbfdff;
+}
+.reject-steps .check { margin: 0; font-weight: 500; }
