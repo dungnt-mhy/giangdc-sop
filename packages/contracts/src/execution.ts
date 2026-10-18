@@ -103,6 +103,8 @@ export interface ExecutionDto {
   reviews: ExecutionReviewDto[];
   /** D-21: số bước bị trả làm lại ở lần reject gần nhất (0 nếu không phải reject theo bước). */
   rejectedStepCount: number;
+  /** D-21b: loại reject của review gần nhất ('steps' = theo bước, 'all' = cả lượt, null = không phải reject). */
+  lastRejectKind: 'steps' | 'all' | null;
   createdAt: string;
   updatedAt: string;
   steps: ExecutionStepDto[];
