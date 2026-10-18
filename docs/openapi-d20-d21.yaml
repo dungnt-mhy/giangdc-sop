@@ -201,3 +201,11 @@ components:
           description: >
             D-21 — số bước của lần reject gần nhất (mode steps); 0 nếu review
             gần nhất không phải reject hoặc là reject cả lượt.
+        lastRejectKind:
+          type: string
+          enum: [steps, all]
+          nullable: true
+          description: >
+            D-21b — loại reject của review gần nhất ('steps' = theo bước,
+            'all' = cả lượt); null nếu review gần nhất không phải reject.
+            Web dùng để hiện badge trong danh sách lượt.
