@@ -68,8 +68,7 @@ export interface ExecutionDto {
   state: ExecutionState;
   orgUnitId: string | null;
   orgUnitName: string | null;
-  note: string | null;
-  /** D-14: tiêu đề lượt (tên gọi). */
+  note: string | null;  /** D-14: tiêu đề lượt (tên gọi). */
   title: string | null;
   /** D-14: ngày thực hiện (YYYY-MM-DD). */
   executionDate: string | null;
@@ -96,10 +95,35 @@ export interface ExecutionDto {
   approvedByName: string | null;
   approvedAt: string | null;
   approvalNote: string | null;
+  /** D-18: thời điểm bấm Bắt đầu lượt (null nếu chưa bắt đầu). */
+  startedAt: string | null;
+  /** D-18: nhật ký duyệt — mới nhất trước. */
+  reviews: ExecutionReviewDto[];
   createdAt: string;
   updatedAt: string;
   steps: ExecutionStepDto[];
 }
+
+/** D-18: hành động trong nhật ký duyệt lượt thực hiện. */
+export type ExecutionReviewAction = 'submit' | 'approve' | 'reject' | 'cancel_submit';
+
+/** D-18: một dòng nhật ký duyệt (người làm, thời gian, lý do). */
+export interface ExecutionReviewDto {
+  id: string;
+  action: ExecutionReviewAction;
+  actorId: string;
+  actorName: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
+/** D-18: nhãn tiếng Việt cho hành động duyệt. */
+export const REVIEW_ACTION_LABEL: Record<ExecutionReviewAction, string> = {
+  submit: 'Báo hoàn thành',
+  approve: 'Xác nhận hoàn thành',
+  reject: 'Từ chối xác nhận',
+  cancel_submit: 'Hủy báo hoàn thành',
+};
 
 /** D-14: ca làm việc. */
 export type ExecutionShift = 'SANG' | 'CHIEU' | 'TOI';
