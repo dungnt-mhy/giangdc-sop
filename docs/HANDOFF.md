@@ -1,5 +1,73 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-15 — bằng chứng mở rộng + trạng thái lượt + thông báo 2 chiều, subagent)
+
+### Đã làm
+
+1. **Migration 0009** (`apps/api/migrations/0008_execution_extras.sql` → `0009_execution_approval.sql`):
+   `executions` thêm `approval_requested_by/at`, `approved_by/at`, `approval_note`
+   (nullable); bảng mới `notifications` (id, user_id, type, title, body, ref_type,
+   ref_id, is_read, created_at + index). Đã apply D1 `giangdc-sop-demo` (5 ALTER OK,
+   bảng + index OK, PRAGMA xác nhận).
+2. **Domain** (`packages/domain/src/execution.ts`, test fail-first):
+   `ExecutionState` thêm `PENDING_APPROVAL` | `APPROVED`; TRANSITIONS cập nhật
+   (COMPLETED→PENDING_APPROVAL→{COMPLETED,APPROVED}; APPROVED terminal như CANCELLED).
+   7 test mới (start/pause/resume/submit/approve/reject/cancel-submit + cấm gửi duyệt
+   từ trạng thái chưa hoàn thành) — **85/85 đạt**.
+3. **Contract** (`packages/contracts/src/execution.ts`, single source):
+   `ExecutionDto` +8 trường duyệt (id/at/name/note); mới `NotificationDto`,
+   `NotificationType` (4 loại), `RejectApprovalBody`; `ExecutionState` đồng bộ 8 giá trị.
+4. **API** (`apps/api/src/executions.ts`, `executionDb.ts`, mới `apps/api/src/notifications.ts`):
+   - Evidence: `MAX_EVIDENCE_BYTES` 10MB→**5MB**; kind=FILE chấp nhận PDF/DOC/DOCX/XLS/XLSX
+     (PHOTO giữ 5 MIME ảnh); `extForMime` mở rộng.
+   - 7 endpoint mới (đều qua `withIdempotency`, đúng tên header `Idempotency-Key`):
+     `/start` (CREATED→IN_PROGRESS), `/pause`, `/resume` (execution.operate);
+     `/submit` (COMPLETED→PENDING_APPROVAL, lưu người gửi; quyền: người tạo hoặc
+     execution.operate); `/cancel-submit` (chỉ người gửi hoặc senior);
+     `/approve` (supervisor của lượt hoặc senior_approver, lưu người duyệt);
+     `/reject` (lý do bắt buộc → COMPLETED + approval_note). Helper chung
+     `doTransition` (canTransition + audit) và `loadExecutionForTransition` (scope).
+   - Thông báo 2 chiều: `createNotification` (bỏ qua user lạ); submit→notify người
+     duyệt (supervisor_id, null → tất cả senior); approve/reject→notify người gửi
+     (fallback created_by); assign bước→notify người được gán (trừ tự gán).
+     Routes: GET `/notifications`, GET `/notifications/unread-count`,
+     POST `/notifications/:id/read`, GET `/executions/pending-approval-count`
+     (đếm theo quyền duyệt: supervisor hoặc senior).
+   - `EXECUTION_SELECT`/`toExecutionDto`: JOIN tên người gửi/người duyệt.
+   - OpenAPI mới `docs/openapi-d15.yaml`.
+5. **Web** (`apps/web/src/executions.tsx`, `App.tsx`, `index.css`):
+   - `EvidenceUpload` (thay PhotoCapture): 3 nút "📷 Chụp" (capture) / "+ Ảnh" /
+     "+ Tệp" (accept doc); `compressImage` (canvas, max 1920px, JPEG 0.82);
+     ảnh sau nén >5MB → "Ảnh sau khi nén vẫn vượt quá 5MB…"; tệp >5MB → "Tệp vượt quá 5MB."
+   - `EXEC_STATE_LABEL/CHIP`: PENDING_APPROVAL='Chờ duyệt' (warn), APPROVED='Đã duyệt' (ok).
+   - Nút trạng thái ở chi tiết lượt theo đúng spec D-15 (xem PROGRESS.md);
+     dialog Từ chối (lý do bắt buộc); hiện vết duyệt ở header.
+   - `NotificationBell` (App.tsx): chuông + badge chưa đọc ở sidebar-foot và
+     mobile-topbar; poll 60s; panel dropdown; click → mark-read + `setNav('execution')`
+     + mở chi tiết lượt qua `externalDetailId`. Badge `nav-badge` số chờ duyệt trên
+     menu "Lượt Thực hiện" (hiện khi > 0). `isSeniorApprover` truyền từ
+     `me.roles[].seniorApprover` → ExecutionsView → ExecutionDetail.
+   - CSS mới: notif-*, nav-badge, ev-btn-row, ev-file-name (theo theme hiện có).
+6. **Evidence:** `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **85/85**,
+   SQL JOIN duyệt + CRUD notifications verify trực tiếp trên D1 demo (test row đã dọn).
+   KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy Worker + Pages + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-15** (cần parent agent — subagent không có live browser),
+  gợi ý checklist trên https://giangdc-sop-app.pages.dev (sau deploy):
+  1. Upload bằng chứng: bước IN_PROGRESS → "+ Ảnh" (chọn ảnh lớn → tự nén, upload ok),
+     "+ Tệp" (chọn PDF >5MB → báo lỗi; file hợp lệ → upload ok).
+  2. Vòng đời lượt: tạo lượt mới → [▶ Bắt đầu] → [⏸ Tạm dừng] → [▶ Tiếp tục] →
+     hoàn thành các bước → [✓ Hoàn thành lượt] → [📤 Gửi duyệt].
+  3. Duyệt 2 chiều: login supervisor (hoặc senior) → thấy badge "Chờ duyệt" trên menu +
+     chuông có thông báo → bấm thông báo nhảy tới lượt → [✓ Duyệt] / [✕ Từ chối]
+     (lý do bắt buộc) → login người tạo → chuông báo kết quả.
+  4. Hủy duyệt: người gửi bấm [↩ Hủy duyệt] → về Hoàn thành.
+- Lưu ý: lượt demo cũ có các trường duyệt = NULL (tương thích); APPROVED là terminal
+  (không reopen như COMPLETED).
+
 ## Phiên 18/10/2026 (D-14 — thiết kế lại luồng tạo lượt thực hiện, subagent)
 
 ### Đã làm
