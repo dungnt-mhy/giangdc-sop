@@ -573,7 +573,7 @@ function CreateExecutionForm({
   const [loadingSteps, setLoadingSteps] = React.useState(false);
 
   React.useEffect(() => {
-    api('/processes')
+    api('/processes?hasActiveVersion=1&limit=100')
       .then((d) => setProcesses((d as { items: ProcessDto[] }).items ?? []))
       .catch(() => setProcesses([]));
     api('/assignable-users')
