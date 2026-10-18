@@ -1,5 +1,46 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-17 — làm lại giao diện chi tiết lượt, subagent)
+
+### Đã làm
+
+1. **Web** (`apps/web/src/executions.tsx`, `apps/web/src/index.css`) — chỉ UI:
+   - Import `ProcessStepDto` từ `@giangdc-sop/contracts`.
+   - `StepGuide` mới: nút "📖 Xem hướng dẫn chi tiết ▸/▾" (chỉ hiện khi có nội dung),
+     panel collapse cuộn 240px, 7 mục nhãn tiếng Việt, `white-space: pre-wrap`.
+   - `StepWorkCard`: prop `guide`, class trạng thái `st-done/st-progress/st-pending` +
+     `blocked`, badge `.step-num` theo sortOrder.
+   - `ExecutionDetail`: state `guides` (map stepCode→ProcessStepDto từ response
+     `GET /versions/:versionId` có sẵn trong `load()`, lỗi im lặng) + `cancelOpen`;
+     render: proc-head gọn → `.exec-actions-sticky` (4 nhóm nút theo trạng thái, logic
+     giữ nguyên, nút Hủy lượt mở modal) → `.exec-meta-grid` → progress → steps
+     (truyền `guide`) → modal hủy lượt + modal từ chối.
+   - `runAction`: bỏ `window.confirm`; hủy thành công tự đóng modal.
+   - `EvidenceThumb`: kind=FILE render chip 📎 + tên file (sửa ảnh vỡ cho PDF).
+   - CSS mới cuối `index.css` (khối D-17): `.btn-ghost`, `.exec-actions-sticky`
+     (+ media query mobile `top: 58px`), `.exec-meta-grid`, timeline
+     `.exec-step-list::before`, `.exec-step` màu trạng thái, `.step-num`,
+     `.step-guide/.guide-panel`, `.ev-list` grid, `.ev-file-chip`.
+2. **Evidence:** `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **93/93**, web build ✓.
+   KHÔNG đụng API/migration; KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy Worker + Pages + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-17** (cần parent agent — subagent không có live browser),
+  gợi ý checklist trên https://giangdc-sop-app.pages.dev (sau deploy):
+  1. Chi tiết lượt bất kỳ: cuộn xuống — cụm nút (Bắt đầu/Tạm dừng/Báo hoàn thành/Hủy lượt…)
+     dính trên đầu, không bị che.
+  2. Bấm "Hủy lượt" → modal trong app hiện (không phải dialog trình duyệt) → "← Hủy bỏ"
+     đóng, "Xác nhận hủy" hủy được.
+  3. Mỗi bước có "📖 Xem hướng dẫn chi tiết" (nếu quy trình có nội dung) → mở ra panel
+     cuộn, hiện đúng các mục Điều kiện/Đầu vào/Hướng dẫn/Kết quả/Đầu ra/Ghi chú/Cảnh báo.
+  4. Màu thẻ bước: xong = xanh lá, đang làm = xanh dương, chờ = xám, khóa = mờ;
+     số thứ tự tròn nổi trên đường timeline dọc; bằng chứng file hiện chip 📎.
+  5. Mobile: cụm nút sticky không đè topbar, meta 2 cột, không vỡ layout.
+- Lưu ý: `VersionStepLite` vẫn dùng ở form tạo lượt (không xóa); `guides` fetch im lặng
+  nên lượt cũ/quy trình thiếu hướng dẫn chỉ ẩn nút, không lỗi.
+
 ## Phiên 18/10/2026 (D-16 — bước tuần tự + Báo/Xác nhận hoàn thành, subagent)
 
 ### Đã làm
