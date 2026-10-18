@@ -1,8 +1,48 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (D-14 hoàn thành).
+Cập nhật: 18/10/2026 (D-15 hoàn thành).
 
 ## Đã verified
+
+- **D-15: bằng chứng mở rộng + trạng thái lượt + thông báo 2 chiều — HOÀN THÀNH 18/10/2026 (subagent, user duyệt "Đồng ý").**
+  - Migration 0009 (`apps/api/migrations/0009_execution_approval.sql`): `executions` thêm
+    `approval_requested_by/at`, `approved_by/at`, `approval_note`; bảng mới `notifications`
+    (+ index user/is_read/created_at) — đã apply D1 demo.
+  - Domain (`packages/domain/src/execution.ts`): `ExecutionState` thêm PENDING_APPROVAL,
+    APPROVED; TRANSITIONS mới (COMPLETED→PENDING_APPROVAL→APPROVED/COMPLETED; APPROVED
+    terminal) — test fail-first, **85/85 đạt** (78 cũ + 7 mới).
+  - Contract (`packages/contracts/src/execution.ts`): `ExecutionDto` thêm trường duyệt
+    (+ tên hiển thị); mới `NotificationDto`, `NotificationType`, `RejectApprovalBody`;
+    `ExecutionState` đồng bộ 8 trạng thái.
+  - API (`apps/api/src/executions.ts`, `executionDb.ts`, mới `notifications.ts`):
+    - Evidence: giới hạn 10MB→**5MB**; kind=FILE mở MIME PDF/Word/Excel
+      (PHOTO giữ ảnh); ext theo loại file.
+    - MỚI 7 endpoint trạng thái (Idempotency-Key đúng tên + audit):
+      POST /executions/:id/start|pause|resume (execution.operate),
+      /submit (COMPLETED→PENDING_APPROVAL; người tạo hoặc execution.operate),
+      /cancel-submit (chỉ người đã gửi hoặc senior),
+      /approve (supervisor của lượt hoặc senior_approver),
+      /reject (lý do bắt buộc, cùng quyền approve).
+    - Thông báo 2 chiều: helper `createNotification`; submit→báo người duyệt
+      (supervisor, không có → senior); approve/reject→báo người gửi;
+      assign bước→báo người được gán. MỚI: GET /notifications,
+      GET /notifications/unread-count, POST /notifications/:id/read,
+      GET /executions/pending-approval-count.
+    - OpenAPI: `docs/openapi-d15.yaml` mới.
+  - Web (`apps/web/src/executions.tsx`, `App.tsx`):
+    - `EvidenceUpload` thay PhotoCapture: 3 nút "📷 Chụp" + "+ Ảnh" + "+ Tệp";
+      nén ảnh client (canvas 1920px, JPEG 0.82); >5MB sau nén → lỗi;
+      tệp >5MB → lỗi.
+    - Chi tiết lượt: nút theo trạng thái — Mới tạo [▶ Bắt đầu]; Đang thực hiện
+      [⏸ Tạm dừng] [✓ Hoàn thành lượt] [Hủy lượt]; Tạm dừng [▶ Tiếp tục] [Hủy lượt];
+      Hoàn thành [📤 Gửi duyệt]; Chờ duyệt: người gửi [↩ Hủy duyệt], người duyệt
+      [✓ Duyệt] [✕ Từ chối] (dialog lý do bắt buộc); Đã duyệt: chip only.
+      Hiện vết duyệt (người gửi/người duyệt/thời điểm/lý do).
+    - Chuông 🔔 (sidebar + mobile topbar): badge chưa đọc (poll 60s), panel dropdown,
+      bấm → đánh dấu đã đọc + nhảy tới chi tiết lượt. Badge số chờ duyệt trên menu
+      "Lượt Thực hiện" (chỉ hiện khi > 0).
+  - Build: `tsc --noEmit` ✓, `pnpm test` **85/85**; SQL mới verify trực tiếp trên D1 demo.
+  - Chưa deploy/commit/push (parent tự làm); kiểm thử trình duyệt chờ parent agent.
 
 - **D-14: thiết kế lại luồng tạo lượt thực hiện — HOÀN THÀNH 18/10/2026 (subagent, user duyệt "Đồng ý").**
   - Migration 0008 (`apps/api/migrations/0008_execution_extras.sql`): `executions` thêm
