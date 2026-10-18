@@ -373,6 +373,11 @@ function ProcessDetail({
     v: ProcessVersionDto;
   } | null>(null);
   const [lifeReason, setLifeReason] = React.useState('');
+  /** Gửi thẩm định nhanh từ bảng lịch sử (DRAFT). */
+  const [quickSubmit, setQuickSubmit] = React.useState<ProcessVersionDto | null>(null);
+  const [qsSummary, setQsSummary] = React.useState('');
+  const [qsSize, setQsSize] = React.useState<'MINOR' | 'MAJOR'>('MINOR');
+  const [qsImpact, setQsImpact] = React.useState('');
 
   const load = React.useCallback(async () => {
     try {
@@ -469,6 +474,28 @@ function ProcessDetail({
     }
   }
 
+  async function doQuickSubmit() {
+    if (!quickSubmit || busy) return;
+    if (!qsSummary.trim()) { setError('Vui lòng nhập nội dung thay đổi.'); return; }
+    if (qsSize === 'MAJOR' && !qsImpact.trim()) { setError('Thay đổi lớn cần đánh giá tác động.'); return; }
+    setBusy(true);
+    setError('');
+    try {
+      await mut(`/versions/${quickSubmit.id}/submit`, 'POST', {
+        changeSummary: qsSummary.trim(),
+        changeSize: qsSize,
+        impactAssessment: qsImpact.trim() || null,
+        expectedRevision: quickSubmit.revision,
+      }, true);
+      setQuickSubmit(null);
+      await load();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!process) return <div className="empty">{error || 'Đang tải…'}</div>;
 
   return (
@@ -487,11 +514,19 @@ function ProcessDetail({
             Người tạo: {process.createdByName ?? '—'} · Ngày tạo: {fmtDate(process.createdAt)}
           </p>
         </div>
-        {can(perms, 'process.edit') && (
-          <button className="btn-primary" onClick={newVersion} disabled={busy}>
-            + Phiên bản mới
-          </button>
-        )}
+        {can(perms, 'process.edit') && (() => {
+          const openV = versions.find((v) => v.state === 'DRAFT' || v.state === 'IN_REVIEW');
+          return (
+            <button
+              className="btn-primary"
+              onClick={newVersion}
+              disabled={busy || !!openV}
+              title={openV ? `Đã có bản v${openV.versionNo} ở trạng thái "${openV.state === 'DRAFT' ? 'Nháp' : 'Chờ thẩm định'}" — hoàn tất hoặc hủy bản đó trước khi tạo mới.` : undefined}
+            >
+              + Phiên bản mới
+            </button>
+          );
+        })()}
       </div>
 
       <section className="section">
@@ -521,6 +556,9 @@ function ProcessDetail({
                 {!v.voidedAt && (<>
                 {v.state === 'DRAFT' && can(perms, 'process.edit') && (
                   <button className="btn-small" onClick={() => onEditVersion(v)}>Soạn thảo</button>
+                )}
+                {v.state === 'DRAFT' && can(perms, 'process.edit') && (
+                  <button className="btn-small primary" onClick={() => { setQsSummary(v.changeSummary ?? ''); setQsSize('MINOR'); setQsImpact(''); setQuickSubmit(v); }} disabled={busy}>Gửi thẩm định</button>
                 )}
                 {(v.state === 'IN_REVIEW' || v.state === 'APPROVED' || v.state === 'SCHEDULED' || v.state === 'ACTIVE' || v.state === 'SUPERSEDED') && (
                   <button className="btn-small ghost" onClick={() => onReviewVersion(v)}>Xem</button>
@@ -629,6 +667,36 @@ function ProcessDetail({
               >
                 {busy ? 'Đang xử lý…' : LIFE_ACTION_META[lifeAction.kind].btn}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {quickSubmit && (
+        <div className="modal-backdrop" onClick={() => setQuickSubmit(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>Gửi thẩm định — bản v{quickSubmit.versionNo}</h3>
+            <p className="sec-desc">Gửi đi sẽ khóa sửa nội dung bản nháp (GOV-001).</p>
+            <div className="field">
+              <label>Nội dung thay đổi * (BR-003)</label>
+              <textarea className="input" rows={3} value={qsSummary} onChange={(e) => setQsSummary(e.target.value)} placeholder="Mô tả ngắn gọn nội dung thay đổi của bản này" />
+            </div>
+            <div className="field">
+              <label>Mức thay đổi</label>
+              <select className="input" value={qsSize} onChange={(e) => setQsSize(e.target.value as 'MINOR' | 'MAJOR')}>
+                <option value="MINOR">Nhỏ</option>
+                <option value="MAJOR">Lớn (cần đánh giá tác động)</option>
+              </select>
+            </div>
+            {qsSize === 'MAJOR' && (
+              <div className="field">
+                <label>Đánh giá tác động *</label>
+                <textarea className="input" rows={3} value={qsImpact} onChange={(e) => setQsImpact(e.target.value)} />
+              </div>
+            )}
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setQuickSubmit(null)}>Hủy</button>
+              <button className="btn-primary" onClick={doQuickSubmit} disabled={busy}>{busy ? 'Đang gửi…' : 'Gửi thẩm định'}</button>
             </div>
           </div>
         </div>
