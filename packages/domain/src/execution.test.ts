@@ -23,10 +23,47 @@ describe('Execution transitions (SRS v1.6 §7.5, Table 5)', () => {
   });
 
   it('CANCELLED is terminal', () => {
-    const states = ['CREATED', 'IN_PROGRESS', 'PAUSED', 'BLOCKED', 'COMPLETED', 'CANCELLED'] as const;
+    const states = ['CREATED', 'IN_PROGRESS', 'PAUSED', 'BLOCKED', 'COMPLETED', 'PENDING_APPROVAL', 'APPROVED', 'CANCELLED'] as const;
     for (const s of states) {
       expect(canTransition('CANCELLED', s)).toBe(false);
     }
+  });
+
+  it('APPROVED is terminal', () => {
+    const states = ['CREATED', 'IN_PROGRESS', 'PAUSED', 'BLOCKED', 'COMPLETED', 'PENDING_APPROVAL', 'APPROVED', 'CANCELLED'] as const;
+    for (const s of states) {
+      expect(canTransition('APPROVED', s)).toBe(false);
+    }
+  });
+});
+
+describe('D-15: luồng duyệt lượt thực hiện', () => {
+  it('CREATED -> IN_PROGRESS (bắt đầu); IN_PROGRESS -> PAUSED (tạm dừng); PAUSED -> IN_PROGRESS (tiếp tục)', () => {
+    expect(canTransition('CREATED', 'IN_PROGRESS')).toBe(true);
+    expect(canTransition('IN_PROGRESS', 'PAUSED')).toBe(true);
+    expect(canTransition('PAUSED', 'IN_PROGRESS')).toBe(true);
+  });
+
+  it('COMPLETED -> PENDING_APPROVAL (gửi duyệt)', () => {
+    expect(canTransition('COMPLETED', 'PENDING_APPROVAL')).toBe(true);
+  });
+
+  it('PENDING_APPROVAL -> COMPLETED (hủy duyệt / từ chối)', () => {
+    expect(canTransition('PENDING_APPROVAL', 'COMPLETED')).toBe(true);
+  });
+
+  it('PENDING_APPROVAL -> APPROVED (duyệt)', () => {
+    expect(canTransition('PENDING_APPROVAL', 'APPROVED')).toBe(true);
+  });
+
+  it('không cho gửi duyệt từ trạng thái chưa hoàn thành', () => {
+    expect(canTransition('CREATED', 'PENDING_APPROVAL')).toBe(false);
+    expect(canTransition('IN_PROGRESS', 'PENDING_APPROVAL')).toBe(false);
+    expect(canTransition('PAUSED', 'PENDING_APPROVAL')).toBe(false);
+  });
+
+  it('COMPLETED giữ đường reopen về IN_PROGRESS', () => {
+    expect(canTransition('COMPLETED', 'IN_PROGRESS')).toBe(true);
   });
 });
 
