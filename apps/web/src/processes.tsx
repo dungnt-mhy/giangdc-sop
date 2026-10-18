@@ -338,6 +338,7 @@ function ProcessDetail({
   const [busy, setBusy] = React.useState(false);
   const [showRelease, setShowRelease] = React.useState<ProcessVersionDto | null>(null);
   const [effectiveFrom, setEffectiveFrom] = React.useState('');
+  const [releaseMode, setReleaseMode] = React.useState<'now' | 'scheduled'>('now');
 
   const load = React.useCallback(async () => {
     try {
@@ -374,11 +375,12 @@ function ProcessDetail({
     setError('');
     try {
       const d = (await mut(`/versions/${v.id}/release`, 'POST', {
-        effectiveFrom: effectiveFrom || null,
+        effectiveFrom: releaseMode === 'scheduled' ? (effectiveFrom || null) : null,
         expectedRevision: v.revision,
       }, true)) as { version: ProcessVersionDto };
       setShowRelease(null);
       setEffectiveFrom('');
+      setReleaseMode('now');
       await load();
       onReviewVersion(d.version);
     } catch (e) {
@@ -462,7 +464,7 @@ function ProcessDetail({
                   <button className="btn-small ghost" onClick={() => onReviewVersion(v)}>Xem</button>
                 )}
                 {v.state === 'APPROVED' && can(perms, 'process.publish') && (
-                  <button className="btn-small primary" onClick={() => setShowRelease(v)} disabled={busy}>Phát hành</button>
+                  <button className="btn-small primary" onClick={() => { setReleaseMode('now'); setEffectiveFrom(''); setShowRelease(v); }} disabled={busy}>Phát hành</button>
                 )}
                 {v.state === 'SCHEDULED' && can(perms, 'process.publish') && (
                   <button className="btn-small primary" onClick={() => activate(v)} disabled={busy}>Kích hoạt</button>
@@ -482,19 +484,45 @@ function ProcessDetail({
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>Phát hành bản v{showRelease.versionNo}</h3>
             <p className="sec-desc">
-              Bỏ trống để phát hành ngay, hoặc chọn thời điểm hiệu lực trong tương lai
+              Chọn phát hành ngay hoặc hẹn thời điểm hiệu lực trong tương lai
               (bản đi qua SCHEDULED — GOV-005).
             </p>
-            <label>Thời điểm hiệu lực (tùy chọn)</label>
-            <input
-              className="input"
-              type="datetime-local"
-              value={effectiveFrom}
-              onChange={(e) => setEffectiveFrom(e.target.value)}
-            />
+            <div className="field">
+              <label className="check">
+                <input
+                  type="radio"
+                  checked={releaseMode === 'now'}
+                  onChange={() => setReleaseMode('now')}
+                />
+                Phát hành ngay (hiệu lực lập tức)
+              </label>
+              <label className="check">
+                <input
+                  type="radio"
+                  checked={releaseMode === 'scheduled'}
+                  onChange={() => setReleaseMode('scheduled')}
+                />
+                Hẹn thời điểm hiệu lực
+              </label>
+            </div>
+            {releaseMode === 'scheduled' && (
+              <div className="field">
+                <label>Thời điểm hiệu lực *</label>
+                <input
+                  className="input"
+                  type="datetime-local"
+                  value={effectiveFrom}
+                  onChange={(e) => setEffectiveFrom(e.target.value)}
+                />
+              </div>
+            )}
             <div className="modal-actions">
               <button className="btn-ghost" onClick={() => setShowRelease(null)}>Hủy</button>
-              <button className="btn-primary" onClick={() => doRelease(showRelease)} disabled={busy}>
+              <button
+                className="btn-primary"
+                onClick={() => doRelease(showRelease)}
+                disabled={busy || (releaseMode === 'scheduled' && !effectiveFrom)}
+              >
                 {busy ? 'Đang phát hành…' : 'Phát hành'}
               </button>
             </div>
@@ -889,10 +917,10 @@ function VersionEditor({
     }
   }
 
-  async function validate() {
+  async function validate(extra?: { changeSummary?: string }) {
     setError('');
     try {
-      const d = (await api(`/versions/${v.id}/validate`, { method: 'POST', body: JSON.stringify({}) })) as { valid: boolean; issues: ValidationIssueDto[] };
+      const d = (await api(`/versions/${v.id}/validate`, { method: 'POST', body: JSON.stringify(extra ?? {}) })) as { valid: boolean; issues: ValidationIssueDto[] };
       setIssues(d.issues);
       if (d.valid) setError('');
     } catch (e) {
@@ -916,7 +944,7 @@ function VersionEditor({
       const err = e as Error & { code?: string };
       if (err.code === 'VALIDATION_FAILED') {
         setShowSubmit(false);
-        await validate();
+        await validate({ changeSummary: summary });
         setError('Bản nháp chưa đạt — xem danh sách lỗi bên dưới.');
       } else {
         setError(errMsg(e));
@@ -936,7 +964,7 @@ function VersionEditor({
           <h2 className="page-title">Soạn thảo bản nháp</h2>
         </div>
         <div className="ver-actions">
-          <button className="btn-small ghost" onClick={validate}>Kiểm tra bản nháp</button>
+          <button className="btn-small ghost" onClick={() => validate()}>Kiểm tra bản nháp</button>
           <button className="btn-small primary" onClick={() => { setSummary(v.changeSummary ?? ''); setShowSubmit(true); }}>Gửi thẩm định</button>
         </div>
       </div>
