@@ -23,6 +23,7 @@ import type {
   RejectApprovalBody,
 } from '@giangdc-sop/contracts';
 import {
+  addExecutionReview,
   findActiveUser,
   findEvidence,
   findExecution,
@@ -659,7 +660,11 @@ executionApp.post(
       const session = c.get('session') as AuthSession;
       const loaded = await loadExecutionForTransition(c, requestId);
       if ('status' in loaded) return loaded;
-      return doTransition(c.env.DB, loaded.row, session, requestId, 'IN_PROGRESS', 'execution.start');
+      // D-18: lưu thời điểm bắt đầu để hiện "Bắt đầu lúc".
+      return doTransition(c.env.DB, loaded.row, session, requestId, 'IN_PROGRESS', 'execution.start', {
+        setSql: 'started_at = ?3',
+        binds: [new Date().toISOString()],
+      });
     });
   },
 );
@@ -720,6 +725,10 @@ executionApp.post('/executions/:id/submit', requireAuth, async (c) => {
       binds: [session.user_id, now],
     });
     if (res.status === 200) {
+      // D-18: lưu vết báo hoàn thành vào nhật ký duyệt.
+      await addExecutionReview(c.env.DB, {
+        executionId: row.id, action: 'submit', actorId: session.user_id,
+      });
       // D-15/D-16: thông báo 2 chiều — báo cho người duyệt (supervisor; không có -> senior).
       const approverIds = row.supervisor_id
         ? [row.supervisor_id]
@@ -751,10 +760,17 @@ executionApp.post('/executions/:id/cancel-submit', requireAuth, async (c) => {
     if (row.approval_requested_by !== session.user_id && !senior) {
       return { status: 403, body: errorBody('FORBIDDEN', 'Chỉ người đã báo hoàn thành mới được hủy.', requestId) };
     }
-    return doTransition(c.env.DB, row, session, requestId, 'IN_PROGRESS', 'execution.cancel-submit', {
+    const res = await doTransition(c.env.DB, row, session, requestId, 'IN_PROGRESS', 'execution.cancel-submit', {
       setSql: 'approval_requested_by = NULL, approval_requested_at = NULL, approval_note = NULL',
       binds: [],
     });
+    if (res.status === 200) {
+      // D-18: lưu vết hủy báo hoàn thành.
+      await addExecutionReview(c.env.DB, {
+        executionId: row.id, action: 'cancel_submit', actorId: session.user_id,
+      });
+    }
+    return res;
   });
 });
 
@@ -788,6 +804,10 @@ executionApp.post('/executions/:id/approve', requireAuth, async (c) => {
       binds: [session.user_id, now],
     });
     if (res.status === 200) {
+      // D-18: lưu vết xác nhận hoàn thành.
+      await addExecutionReview(c.env.DB, {
+        executionId: row.id, action: 'approve', actorId: session.user_id,
+      });
       // D-15/D-16: báo cho người đã báo hoàn thành (fallback người tạo).
       const target = row.approval_requested_by ?? row.created_by;
       if (target !== session.user_id) {
@@ -825,6 +845,10 @@ executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
       binds: [session.user_id, now, reason],
     });
     if (res.status === 200) {
+      // D-18: lưu vết từ chối xác nhận (kèm lý do) vào nhật ký duyệt.
+      await addExecutionReview(c.env.DB, {
+        executionId: row.id, action: 'reject', actorId: session.user_id, reason,
+      });
       // D-15/D-16: báo cho người đã báo hoàn thành (fallback người tạo).
       const target = row.approval_requested_by ?? row.created_by;
       if (target !== session.user_id) {
