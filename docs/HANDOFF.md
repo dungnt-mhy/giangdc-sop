@@ -1,5 +1,53 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-16 — bước tuần tự + Báo/Xác nhận hoàn thành, subagent)
+
+### Đã làm
+
+1. **Domain** (`packages/domain/src/execution.ts`, test fail-first): mới
+   `canStartStepByOrder` (bước chỉ mở khi mọi bước trước đã DONE, kể cả bước tùy chọn);
+   TRANSITIONS thêm `IN_PROGRESS → PENDING_APPROVAL`, `PENDING_APPROVAL → IN_PROGRESS`
+   (giữ `COMPLETED → PENDING_APPROVAL` tương thích). **93/93 đạt** (85 cũ + 8 mới).
+2. **API** (`apps/api/src/executions.ts`):
+   - Step start: chỉ khi lượt `IN_PROGRESS` (bỏ CREATED + bỏ auto-transition
+     CREATED→IN_PROGRESS); kiểm tra tuần tự qua `getExecutionSteps` →
+     409 `STEP_OUT_OF_ORDER` 'Phải hoàn thành các bước trước theo thứ tự.'
+   - XÓA endpoint POST `/executions/:id/complete` (nút "Hoàn thành lượt" bỏ).
+   - `/submit` thành "Báo hoàn thành": IN_PROGRESS (giữ COMPLETED) → PENDING_APPROVAL;
+     logic allRequiredStepsDone chuyển từ `/complete` cũ sang (400 STEPS_INCOMPLETE,
+     giữ message 'Còn bước bắt buộc chưa hoàn thành.'); quyền giữ nguyên (người tạo
+     hoặc execution.operate). Text thông báo cập nhật: submit/approve/reject theo
+     thuật ngữ mới.
+   - `/cancel-submit` và `/reject`: PENDING_APPROVAL → **IN_PROGRESS** (đổi từ COMPLETED);
+     reject giữ lý do bắt buộc. OpenAPI mới `docs/openapi-d16.yaml`.
+3. **Web** (`apps/web/src/executions.tsx`): EXEC_STATE_LABEL — PENDING_APPROVAL
+   'Chờ xác nhận', APPROVED 'Hoàn thành'; `StepWorkCard` thêm prop `blockedByOrder`
+   (ẩn nút Bắt đầu, hiện gợi ý 🔒, vẫn cho Phân công); ExecutionDetail tính
+   `blockedByOrder` từ `sortOrder`; nút Đang thực hiện: bỏ "✓ Hoàn thành lượt" →
+   "📤 Báo hoàn thành" (gọi submit); xóa section nút COMPLETED; Chờ xác nhận đổi
+   nhãn "↩ Hủy báo hoàn thành" / "✓ Xác nhận hoàn thành"; vết duyệt + dialog từ chối
+   đổi text tương ứng. Bỏ 'complete' khỏi `runAction`.
+4. **Evidence:** `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **93/93**.
+   KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy Worker + Pages + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-16** (cần parent agent — subagent không có live browser),
+  gợi ý checklist trên https://giangdc-sop-app.pages.dev (sau deploy):
+  1. Bước tuần tự: tạo lượt mới → [▶ Bắt đầu] → bước 2+ hiện gợi ý 🔒 "Hoàn thành các
+     bước trước để mở bước này." (không có nút Bắt đầu); hoàn thành bước 1 → bước 2
+     mở. Lượt Mới tạo: bước không thao tác được (API chỉ cho IN_PROGRESS).
+  2. Nút lượt: Đang thực hiện có [⏸ Tạm dừng] [📤 Báo hoàn thành] [Hủy lượt] (không
+     còn "Hoàn thành lượt"); còn bước bắt buộc dở → "Báo hoàn thành" bị disable +
+     tooltip "Còn bước bắt buộc chưa hoàn thành"; báo → chip "Chờ xác nhận".
+  3. Xác nhận 2 chiều: login supervisor/senior → badge menu + chuông "đã báo hoàn thành"
+     → [✓ Xác nhận hoàn thành] → chip "Hoàn thành"; login người báo → chuông
+     "đã được xác nhận hoàn thành". Từ chối (lý do bắt buộc) → lượt về "Đang thực hiện".
+  4. Hủy báo: người báo bấm [↩ Hủy báo hoàn thành] → về "Đang thực hiện".
+- Lưu ý: state COMPLETED vẫn tồn tại ở domain/DB cho tương thích dữ liệu cũ nhưng
+  không còn đường vào qua UI/API mới; lượt demo cũ ở COMPLETED (nếu có) vẫn hiển thị.
+
 ## Phiên 18/10/2026 (D-15 — bằng chứng mở rộng + trạng thái lượt + thông báo 2 chiều, subagent)
 
 ### Đã làm
