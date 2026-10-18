@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allRequiredStepsDone, assigneeMatchesPositions, canStepTransition, canTransition, generateExecutionCode, photoRequired } from './execution.js';
+import { allRequiredStepsDone, assigneeMatchesPositions, canStepTransition, canTransition, checkStepAssignees, generateExecutionCode, isValidShift, normalizeExecutionCreate, photoRequired } from './execution.js';
 
 describe('Execution transitions (SRS v1.6 §7.5, Table 5)', () => {
   it('CREATED -> IN_PROGRESS on valid start', () => {
@@ -85,5 +85,123 @@ describe('Execution step lifecycle (T3, D-12)', () => {
   it('generateExecutionCode: đúng định dạng TH-YYYYMMDD-XXXX', () => {
     const code = generateExecutionCode(new Date('2026-10-18T00:00:00Z'));
     expect(code).toMatch(/^TH-20261018-[A-Z2-9]{4}$/);
+  });
+});
+
+describe('D-14: normalizeExecutionCreate', () => {
+  it('default: ngày = hôm nay, người tạo = người gọi', () => {
+    const r = normalizeExecutionCreate({}, 'user-1', '2026-10-18');
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.executionDate).toBe('2026-10-18');
+      expect(r.value.createdBy).toBe('user-1');
+      expect(r.value.title).toBeNull();
+      expect(r.value.executionTime).toBeNull();
+      expect(r.value.shift).toBeNull();
+      expect(r.value.mainPerformerId).toBeNull();
+      expect(r.value.supervisorId).toBeNull();
+    }
+  });
+
+  it('giữ nguyên các trường hợp lệ, trim khoảng trắng', () => {
+    const r = normalizeExecutionCreate(
+      {
+        title: '  Xuất hàng sáng  ',
+        executionDate: '2026-10-19',
+        executionTime: '08:30',
+        shift: 'SANG',
+        createdBy: 'user-9',
+        mainPerformerId: 'user-2',
+        supervisorId: 'user-3',
+      },
+      'user-1',
+      '2026-10-18',
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.title).toBe('Xuất hàng sáng');
+      expect(r.value.executionDate).toBe('2026-10-19');
+      expect(r.value.executionTime).toBe('08:30');
+      expect(r.value.shift).toBe('SANG');
+      expect(r.value.createdBy).toBe('user-9');
+      expect(r.value.mainPerformerId).toBe('user-2');
+      expect(r.value.supervisorId).toBe('user-3');
+    }
+  });
+
+  it('chuỗi rỗng -> null (dùng default)', () => {
+    const r = normalizeExecutionCreate(
+      { title: '   ', executionDate: '', shift: '', createdBy: '' },
+      'user-1',
+      '2026-10-18',
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.title).toBeNull();
+      expect(r.value.executionDate).toBe('2026-10-18');
+      expect(r.value.shift).toBeNull();
+      expect(r.value.createdBy).toBe('user-1');
+    }
+  });
+
+  it('ngày sai định dạng -> INVALID_EXECUTION_DATE', () => {
+    const r = normalizeExecutionCreate({ executionDate: '18/10/2026' }, 'user-1', '2026-10-18');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe('INVALID_EXECUTION_DATE');
+  });
+
+  it('giờ sai định dạng -> INVALID_EXECUTION_TIME', () => {
+    for (const bad of ['8:30', '25:00', '08-30', '0830']) {
+      const r = normalizeExecutionCreate({ executionTime: bad }, 'user-1', '2026-10-18');
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.code).toBe('INVALID_EXECUTION_TIME');
+    }
+  });
+
+  it('ca sai -> INVALID_SHIFT; chữ thường vẫn nhận', () => {
+    const bad = normalizeExecutionCreate({ shift: 'DEM' }, 'user-1', '2026-10-18');
+    expect(bad.ok).toBe(false);
+    if (!bad.ok) expect(bad.code).toBe('INVALID_SHIFT');
+    const lower = normalizeExecutionCreate({ shift: 'chieu' }, 'user-1', '2026-10-18');
+    expect(lower.ok).toBe(true);
+    if (lower.ok) expect(lower.value.shift).toBe('CHIEU');
+  });
+
+  it('isValidShift nhận đúng 3 ca', () => {
+    expect(isValidShift('SANG')).toBe(true);
+    expect(isValidShift('CHIEU')).toBe(true);
+    expect(isValidShift('TOI')).toBe(true);
+    expect(isValidShift('DEM')).toBe(false);
+    expect(isValidShift(null)).toBe(false);
+    expect(isValidShift(undefined)).toBe(false);
+  });
+});
+
+describe('D-14: checkStepAssignees', () => {
+  it('đúng chức vụ cả 2 vai -> ok', () => {
+    const r = checkStepAssignees(['pos-thu-kho'], ['pos-giam-sat'], ['pos-thu-kho'], ['pos-giam-sat']);
+    expect(r).toEqual({ performerOk: true, supervisorOk: true });
+  });
+
+  it('sai chức vụ người thực hiện -> performerOk=false', () => {
+    const r = checkStepAssignees(['pos-thu-kho'], ['pos-giam-sat'], ['pos-le-tan'], ['pos-giam-sat']);
+    expect(r.performerOk).toBe(false);
+    expect(r.supervisorOk).toBe(true);
+  });
+
+  it('sai chức vụ giám sát -> supervisorOk=false', () => {
+    const r = checkStepAssignees(['pos-thu-kho'], ['pos-giam-sat'], ['pos-thu-kho'], ['pos-le-tan']);
+    expect(r.performerOk).toBe(true);
+    expect(r.supervisorOk).toBe(false);
+  });
+
+  it('không chọn giám sát -> supervisorOk=true', () => {
+    const r = checkStepAssignees(['pos-thu-kho'], ['pos-giam-sat'], ['pos-thu-kho'], null);
+    expect(r).toEqual({ performerOk: true, supervisorOk: true });
+  });
+
+  it('bước không định nghĩa chức vụ -> ai cũng được', () => {
+    const r = checkStepAssignees([], [], [], null);
+    expect(r).toEqual({ performerOk: true, supervisorOk: true });
   });
 });
