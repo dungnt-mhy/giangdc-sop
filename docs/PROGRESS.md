@@ -413,3 +413,14 @@ Cập nhật: 18/10/2026 (D-19 hoàn thành code, chờ deploy + kiểm thử tr
 - Thiếu file SRS v1.5 FINAL Rev.9 (Technical Reference).
 - Deploy tự động GitHub Actions → Cloudflare chưa dựng (cần user tự thêm
   CLOUDFLARE_API_TOKEN vào repo secret). Hiện deploy demo thủ công từ máy dev.
+
+## D-20c — Đồng bộ nhãn nút Lịch sử phiên bản theo ảnh mẫu (18/10/2026 tối)
+- **User duyệt** "Ok đồng bộ". Chỉ đổi UI label, không đổi logic/quyền/API.
+- `apps/web/src/processes.tsx`:
+  - Bản ACTIVE: nút "Ngừng" → "⏸ Ngừng".
+  - Bản SUPERSEDED/RETIRED: nút "Kích hoạt lại" → "🔄 Yêu cầu kích hoạt lại".
+  - Nút "Hủy bỏ" giữ nguyên (D-20 đã duyệt).
+  - `LIFE_ACTION_META` đồng bộ theo (modal title/btn).
+- Kiểm tra: chỉ có 1 chỗ render action versions (`.ver-row` card) — không có bảng desktop thứ 2. Nút không hiện ở ảnh user là do build cũ/cache (D-20 đã kiểm thử 8/8 thấy đủ nút).
+- `pnpm --filter giangdc-sop-web build` pass; `tsc --noEmit` 0 lỗi.
+- Chưa deploy/commit/push (parent làm).
