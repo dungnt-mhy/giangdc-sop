@@ -12,7 +12,9 @@ import type { Permission } from './permissions.js';
  * PRC-001..009, GOV-001..007, BR-001/002/003/004, D-08.
  */
 
-/** Trạng thái phiên bản quy trình (SRS §7.1). */
+/** Trạng thái phiên bản quy trình (SRS §7.1).
+ * D-20b: "Đã hủy" KHÔNG phải state — là flag voided_at/void_reason (migration 0012),
+ * vì D1 qua REST không rebuild được bảng có FK để thêm giá trị vào CHECK. */
 export type ProcessVersionState =
   | 'DRAFT'
   | 'IN_REVIEW'
@@ -26,19 +28,32 @@ export type ProcessVersionState =
  * Transition hợp lệ (CONTRACT — theo sơ đồ §7.1):
  * DRAFT -> IN_REVIEW -> APPROVED -> ACTIVE -> SUPERSEDED -> RETIRED,
  * APPROVED -> SCHEDULED -> ACTIVE, IN_REVIEW -> DRAFT (trả sửa, GOV-003).
+ * D-20 mở rộng:
+ * - APPROVED -> DRAFT ("Hủy phê duyệt");
+ * - ACTIVE -> RETIRED ("Ngừng");
+ * - SUPERSEDED/RETIRED -> IN_REVIEW ("Kích hoạt lại", phải qua duyệt lại).
+ * D-20b: "Hủy bỏ" không đổi state — set cờ voided_at (version đóng băng mọi transition).
  */
 const VERSION_TRANSITIONS: Record<ProcessVersionState, ReadonlySet<ProcessVersionState>> = {
   DRAFT: new Set(['IN_REVIEW']),
   IN_REVIEW: new Set(['DRAFT', 'APPROVED']),
-  APPROVED: new Set(['ACTIVE', 'SCHEDULED']),
+  APPROVED: new Set(['ACTIVE', 'SCHEDULED', 'DRAFT']),
   SCHEDULED: new Set(['ACTIVE']),
-  ACTIVE: new Set(['SUPERSEDED']),
-  SUPERSEDED: new Set(['RETIRED']),
-  RETIRED: new Set(),
+  ACTIVE: new Set(['SUPERSEDED', 'RETIRED']),
+  SUPERSEDED: new Set(['RETIRED', 'IN_REVIEW']),
+  RETIRED: new Set(['IN_REVIEW']),
 };
 
 export function canVersionTransition(from: ProcessVersionState, to: ProcessVersionState): boolean {
   return VERSION_TRANSITIONS[from]?.has(to) ?? false;
+}
+
+/**
+ * D-20b: version đã hủy <=> voided_at IS NOT NULL.
+ * Version đã hủy đóng băng mọi transition (API trả 409 VERSION_VOIDED).
+ */
+export function isVoided(version: { voidedAt?: string | null } | null | undefined): boolean {
+  return !!version?.voidedAt;
 }
 
 /** GOV-001: từ IN_REVIEW trở đi khóa sửa nội dung; chỉ DRAFT được sửa. */
