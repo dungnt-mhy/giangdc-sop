@@ -1,22 +1,28 @@
-/** Execution lifecycle states (SRS v1.6 §7.5, Table 5). */
+/** Execution lifecycle states (SRS v1.6 §7.5, Table 5; D-15 thêm duyệt lượt). */
 export type ExecutionState =
   | 'CREATED'
   | 'IN_PROGRESS'
   | 'PAUSED'
   | 'BLOCKED'
   | 'COMPLETED'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
   | 'CANCELLED';
 
 /**
  * Allowed Execution transitions (CONTRACT).
  * COMPLETED -> IN_PROGRESS is the reopen path, only when the feature/policy allows it.
+ * D-15: COMPLETED -> PENDING_APPROVAL (gửi duyệt); PENDING_APPROVAL -> COMPLETED
+ * (hủy duyệt / từ chối) hoặc APPROVED (duyệt).
  */
 const TRANSITIONS: Record<ExecutionState, ReadonlySet<ExecutionState>> = {
   CREATED: new Set(['IN_PROGRESS', 'CANCELLED']),
   IN_PROGRESS: new Set(['PAUSED', 'BLOCKED', 'COMPLETED', 'CANCELLED']),
   PAUSED: new Set(['IN_PROGRESS', 'CANCELLED']),
   BLOCKED: new Set(['IN_PROGRESS', 'CANCELLED']),
-  COMPLETED: new Set(['IN_PROGRESS']),
+  COMPLETED: new Set(['PENDING_APPROVAL', 'IN_PROGRESS']),
+  PENDING_APPROVAL: new Set(['COMPLETED', 'APPROVED']),
+  APPROVED: new Set(),
   CANCELLED: new Set(),
 };
 
