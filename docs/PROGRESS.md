@@ -268,6 +268,17 @@ Cập nhật: 18/10/2026 (D-19 hoàn thành code, chờ deploy + kiểm thử tr
   - Build: `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **104/104** (97 domain + 7 API).
   - Chưa deploy/commit/push; kiểm thử trình duyệt chờ parent agent.
 
+- **D-21b: badge danh sách cho từ chối cả lượt — HOÀN THÀNH CODE 18/10/2026 (subagent, fix "sửa luôn").**
+  - Vấn đề: từ chối cả lượt (mode='all') thì danh sách không hiện badge nào, chỉ
+    từ chối theo bước mới có "🔄 Bị trả lại: N bước".
+  - Contract: `ExecutionDto` +`lastRejectKind: 'steps'|'all'|null` (từ review gần nhất).
+  - API (`executionDb.ts`): helper mới `lastRejectKindOf(reviews)` dùng trong
+    `toExecutionDto`; test mới 4 case (steps/all/không phải reject/rỗng).
+  - Web: danh sách — `lastRejectKind==='steps'` → "🔄 Bị trả lại: N bước" (như cũ);
+    `==='all'` → "🔄 Bị trả lại làm lại".
+  - Build: `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **108/108** (95 domain + 13 API).
+  - Chưa deploy/commit/push; kiểm thử trình duyệt chờ parent agent.
+
 - **D-19: thiết kế lại thẻ bước theo mẫu — HOÀN THÀNH CODE 18/10/2026 (subagent, user duyệt + chọn "Ngoại lệ để sau").**
   - Web (`apps/web/src/executions.tsx`, `index.css`, `processes.tsx` export ProcessDiagram) — chỉ UI:
     1. Header "Các bước (N)" + toggle Danh sách/Sơ đồ (`.seg-toggle`, active navy);
