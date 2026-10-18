@@ -439,9 +439,9 @@ function ProcessDetail({
   const LIFE_ACTION_META = {
     'cancel-approval': { title: 'Hủy phê duyệt', btn: 'Hủy phê duyệt', danger: true, needReason: true,
       desc: 'Bản về lại Nháp để soạn tiếp. Lịch sử phê duyệt được giữ.' },
-    retire: { title: 'Ngừng bản đang hiệu lực', btn: 'Ngừng', danger: true, needReason: false,
+    retire: { title: 'Ngừng bản đang hiệu lực', btn: '⏸ Ngừng', danger: true, needReason: false,
       desc: 'Bản chuyển sang Ngừng dùng. Lịch sử tra cứu vẫn giữ (GOV-007).' },
-    reactivate: { title: 'Kích hoạt lại', btn: 'Kích hoạt lại', danger: false, needReason: false,
+    reactivate: { title: 'Yêu cầu kích hoạt lại', btn: '🔄 Yêu cầu kích hoạt lại', danger: false, needReason: false,
       desc: 'Bản quay lại Chờ thẩm định để duyệt lại từ đầu. Yêu cầu: không còn bản nào đang hiệu lực.' },
     void: { title: 'Hủy bỏ phiên bản', btn: 'Hủy bỏ', danger: true, needReason: true,
       desc: 'Đánh dấu bản Đã hủy (giữ nguyên trạng thái cũ). Bản bị đóng băng: không kích hoạt lại hay thao tác tiếp được.' },
@@ -529,13 +529,13 @@ function ProcessDetail({
                   <button className="btn-small primary" onClick={() => activate(v)} disabled={busy}>Kích hoạt</button>
                 )}
                 {v.state === 'ACTIVE' && can(perms, 'process.deprecate') && (
-                  <button className="btn-small ghost" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'retire', v }); }} disabled={busy}>Ngừng</button>
+                  <button className="btn-small ghost" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'retire', v }); }} disabled={busy}>⏸ Ngừng</button>
                 )}
                 {v.state === 'SUPERSEDED' && can(perms, 'process.deprecate') && (
                   <button className="btn-small ghost" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'retire', v }); }} disabled={busy}>Ngừng dùng</button>
                 )}
                 {(v.state === 'SUPERSEDED' || v.state === 'RETIRED') && can(perms, 'process.edit') && (
-                  <button className="btn-small" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'reactivate', v }); }} disabled={busy}>Kích hoạt lại</button>
+                  <button className="btn-small" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'reactivate', v }); }} disabled={busy}>🔄 Yêu cầu kích hoạt lại</button>
                 )}
                 {(v.state === 'SUPERSEDED' || v.state === 'RETIRED') && can(perms, 'process.deprecate') && (
                   <button className="btn-small danger" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'void', v }); }} disabled={busy}>Hủy bỏ</button>
