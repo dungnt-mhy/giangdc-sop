@@ -1,5 +1,42 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-19 — thiết kế lại thẻ bước theo mẫu, subagent)
+
+### Đã làm
+
+1. **Web** (`apps/web/src/executions.tsx`, `apps/web/src/index.css`;
+   `apps/web/src/processes.tsx`: export `ProcessDiagram`) — chỉ UI, không đụng API/migration:
+   - `ExecutionDetail`: state `stepsView` ('list'|'diagram'); header `.steps-head` "Các bước (N)"
+     + `.seg-toggle` Danh sách/Sơ đồ; chế độ Sơ đồ render `ProcessDiagram` với steps map từ
+     `ExecutionStepDto` (id/code/title/sortOrder/required/skip), `openSteps={EMPTY_STEP_SET}`,
+     `onToggle` noop (chỉ xem).
+   - `StepWorkCard` viết lại render: `.step-card-head` (badge `.step-num` inline navy +
+     "mã — tên" + chip), `.step-card-actions` (nút `.btn-start` "Bắt đầu"/"✓ Hoàn thành bước"
+     + `.btn-assign` "👥 Phân công" — giữ nguyên điều kiện hiển thị cũ),
+     `.step-card-assignee` ("Chưa phân công" xám / "👤 tên"), gợi ý 🔒 giữ nguyên,
+     `StepGuide` đổi nhãn "▶/▼ 📋 Chi tiết bước", khối `.step-evidence` "📷 Bằng chứng"
+     (thumbnails + EvidenceUpload khi được phép + cảnh báo PHOTO + ghi chú giới hạn 5MB).
+   - KHÔNG vẽ UI "⚠ Ngoại lệ" (user chốt để T5 sau).
+   - CSS cuối `index.css` (khối D-19): `.steps-head`, `.seg-toggle`, `.step-card-*`,
+     `.btn-start/.btn-assign`, `.step-evidence`; bỏ timeline `::before`, `.step-num`
+     inline; mobile: nút xếp dọc full-width.
+2. **Evidence:** `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **97/97** (93 domain + 4 API),
+   web build ✓. KHÔNG đụng API/migration; KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy Pages + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-19** (cần parent agent — subagent không có live browser),
+  gợi ý checklist trên https://giangdc-sop-app.pages.dev (sau deploy):
+  1. Chi tiết lượt bất kỳ: header "Các bước (N)" + toggle Danh sách/Sơ đồ;
+     bấm "Sơ đồ" → hiện sơ đồ dọc Bắt đầu → các bước (mã/tiêu đề/Bắt buộc) → Kết thúc.
+  2. Thẻ bước: badge số navy + "mã — tên" + chip; nút "Bắt đầu" nền navy đậm +
+     "👥 Phân công" nền nhạt; dòng "Chưa phân công" khi chưa gán.
+  3. "▶ 📋 Chi tiết bước" → mở panel hướng dẫn; "📷 Bằng chứng" hiện thumbnails +
+     3 nút upload (khi bước đang thực hiện) + ghi chú giới hạn 5MB.
+  4. Mobile: nút Bắt đầu/Phân công xếp dọc full-width, không vỡ layout.
+- Ngoại lệ (T5): chưa làm theo quyết định D-19.
+
 ## Phiên 18/10/2026 (D-18 — nhật ký duyệt + Thông tin lượt công việc, subagent)
 
 ### Đã làm
