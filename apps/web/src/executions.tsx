@@ -30,8 +30,8 @@ const EXEC_STATE_LABEL: Record<ExecutionState, string> = {
   PAUSED: 'Tạm dừng',
   BLOCKED: 'Bị chặn',
   COMPLETED: 'Hoàn thành',
-  PENDING_APPROVAL: 'Chờ duyệt',
-  APPROVED: 'Đã duyệt',
+  PENDING_APPROVAL: 'Chờ xác nhận',
+  APPROVED: 'Hoàn thành',
   CANCELLED: 'Đã hủy',
 };
 
@@ -383,6 +383,7 @@ function StepWorkCard({
   users,
   positions,
   req,
+  blockedByOrder,
   onChanged,
 }: {
   step: ExecutionStepDto;
@@ -392,6 +393,8 @@ function StepWorkCard({
   users: AssignableUser[];
   positions: PositionDto[];
   req: StepPositionReq | undefined;
+  /** D-16: true khi còn bước trước chưa DONE (bước làm tuần tự). */
+  blockedByOrder: boolean;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = React.useState(false);
@@ -476,12 +479,13 @@ function StepWorkCard({
 
       {canOperate && step.state === 'PENDING' && (
         <div className="step-work-actions">
-          {isMine && (
+          {blockedByOrder && <span className="muted">🔒 Hoàn thành các bước trước để mở bước này.</span>}
+          {!blockedByOrder && isMine && (
             <button type="button" className="btn-small primary" disabled={busy} onClick={() => post('start')}>
               {busy ? 'Đang xử lý…' : '▶ Bắt đầu bước'}
             </button>
           )}
-          {unassigned && (
+          {!blockedByOrder && unassigned && (
             <button type="button" className="btn-small primary" disabled={busy} onClick={startUnassigned}>
               {busy ? 'Đang xử lý…' : '▶ Bắt đầu'}
             </button>
@@ -593,7 +597,7 @@ export function ExecutionDetail({
 
   React.useEffect(() => { load(); }, [load]);
 
-  const runAction = async (action: 'start' | 'pause' | 'resume' | 'complete' | 'cancel' | 'submit' | 'cancel-submit' | 'approve') => {
+  const runAction = async (action: 'start' | 'pause' | 'resume' | 'cancel' | 'submit' | 'cancel-submit' | 'approve') => {
     if (!ex || busy) return;
     if (action === 'cancel' && !window.confirm(`Hủy lượt ${ex.code}?`)) return;
     setBusy(true);
@@ -673,13 +677,13 @@ export function ExecutionDetail({
           </p>
           {ex.approvalRequestedByName && (
             <p className="sec-desc">
-              📤 {ex.approvalRequestedByName} gửi duyệt
+              📤 {ex.approvalRequestedByName} báo hoàn thành
               {ex.approvalRequestedAt ? ` lúc ${new Date(ex.approvalRequestedAt).toLocaleString('vi-VN')}` : ''}
             </p>
           )}
           {ex.approvedByName && (
             <p className="sec-desc">
-              ✓ {ex.approvedByName} duyệt
+              ✓ {ex.approvedByName} xác nhận hoàn thành
               {ex.approvedAt ? ` lúc ${new Date(ex.approvedAt).toLocaleString('vi-VN')}` : ''}
               {ex.approvalNote ? ` — Lý do: ${ex.approvalNote}` : ''}
             </p>
@@ -712,6 +716,7 @@ export function ExecutionDetail({
               users={users}
               positions={positions}
               req={stepReqs[s.stepCode]}
+              blockedByOrder={ex.steps.some((p) => p.sortOrder < s.sortOrder && p.state !== 'DONE')}
               onChanged={load}
             />
           ))}
@@ -738,10 +743,10 @@ export function ExecutionDetail({
             type="button"
             className="btn-small primary"
             disabled={busy || !canFinish}
-            onClick={() => runAction('complete')}
+            onClick={() => runAction('submit')}
             title={canFinish ? undefined : 'Còn bước bắt buộc chưa hoàn thành'}
           >
-            ✓ Hoàn thành lượt
+            📤 Báo hoàn thành
           </button>
           <button type="button" className="btn-small danger" disabled={busy} onClick={() => runAction('cancel')}>
             Hủy lượt
@@ -758,24 +763,17 @@ export function ExecutionDetail({
           </button>
         </div>
       )}
-      {ex.state === 'COMPLETED' && (ex.createdBy === userId || canOperate) && (
-        <div className="exec-actions">
-          <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('submit')}>
-            {busy ? 'Đang xử lý…' : '📤 Gửi duyệt'}
-          </button>
-        </div>
-      )}
       {ex.state === 'PENDING_APPROVAL' && (
         <div className="exec-actions">
           {ex.approvalRequestedBy === userId && (
             <button type="button" className="btn-small" disabled={busy} onClick={() => runAction('cancel-submit')}>
-              {busy ? 'Đang xử lý…' : '↩ Hủy duyệt'}
+              {busy ? 'Đang xử lý…' : '↩ Hủy báo hoàn thành'}
             </button>
           )}
           {(ex.supervisorId === userId || isSeniorApprover) && (
             <>
               <button type="button" className="btn-small primary" disabled={busy} onClick={() => runAction('approve')}>
-                {busy ? 'Đang xử lý…' : '✓ Duyệt'}
+                {busy ? 'Đang xử lý…' : '✓ Xác nhận hoàn thành'}
               </button>
               <button type="button" className="btn-small danger" disabled={busy} onClick={() => setRejectOpen(true)}>
                 ✕ Từ chối
@@ -787,7 +785,7 @@ export function ExecutionDetail({
       {rejectOpen && (
         <div className="modal-backdrop" onClick={() => setRejectOpen(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h3>Từ chối duyệt lượt {ex.code}</h3>
+            <h3>Từ chối xác nhận lượt {ex.code}</h3>
             <div className="field">
               <label>Lý do từ chối *</label>
               <textarea
