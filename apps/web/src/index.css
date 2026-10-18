@@ -12,6 +12,7 @@
   --text: #182234;
   --muted: #5b6b85;
   --line: #e3e8f2;
+  --border: var(--line);
   --ok: #15803d;
   --ok-bg: #e9f7ee;
   --warn-bg: #fdf3e3;
@@ -1633,7 +1634,8 @@ img.logo-img {
   }
   .ver-timeline .ver-row {
     padding: 0.7rem 0.8rem;
-    /* Viền mờ ngăn cách các dòng. */
+    /* Xóa viền card của desktop, chỉ giữ viền mờ ngăn cách các dòng. */
+    border: none;
     border-top: 1px solid var(--border);
     background: transparent;
     border-radius: 0;
