@@ -1,3 +1,27 @@
+## Phiên 18/10/2026 (D-20d — Lịch sử phiên bản mobile dạng bảng ngang, subagent)
+
+### Đã làm
+
+1. **Web** (`apps/web/src/processes.tsx`): thêm `div.ver-head` (aria-hidden="true")
+   với 3 nhãn "Phiên bản / Thông tin / Thao tác", tái dùng class `.ver-no`/`.ver-main`
+   để canh cột.
+2. **CSS** (`apps/web/src/index.css`):
+   - Base: `.ver-head { display: none; }` — desktop không đổi.
+   - `@media (max-width: 860px)`: **xóa** `.ver-row { flex-direction: column; }`;
+     `.ver-timeline` +`overflow-x: auto` + `padding-bottom: 0.4rem`;
+     `.ver-head` hiện (flex, min-width 640px, chữ nhỏ in hoa);
+     `.ver-timeline .ver-row` giữ `flex-direction: row`, `align-items: center`,
+     `min-width: 640px` — các cột không bị ép vỡ chữ, cuộn ngang mượt.
+3. **Evidence:** `pnpm --filter giangdc-sop-web build` pass;
+   `pnpm -r exec tsc --noEmit` 0 lỗi. KHÔNG deploy, KHÔNG commit/push
+   (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Deploy + push GitHub**: parent agent tự làm.
+- **Kiểm thử trình duyệt**: subagent không giả lập được mobile viewport —
+  parent kiểm trên điện thoại thật hoặc nhờ user kiểm.
+
 # HANDOFF.md — Bàn giao phiên
 
 ## Phiên 18/10/2026 (D-21b — badge danh sách cho từ chối cả lượt, subagent)
