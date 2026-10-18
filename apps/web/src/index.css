@@ -1322,10 +1322,10 @@ img.logo-img {
 .sd-grid .sd-k {
   display: block;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--muted);
+  color: #1d4ed8;
   margin-bottom: 0.15rem;
 }
 
