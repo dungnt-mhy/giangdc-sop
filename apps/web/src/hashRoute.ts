@@ -9,6 +9,8 @@
  *   #/processes/{processId}/review/{versionId} → Xem/thẩm định bản
  *   #/executions               → Danh sách lượt thực hiện
  *   #/executions/{executionId} → Chi tiết 1 lượt
+ *   #/reports                  → Báo cáo/KPI (T6)
+ *   #/admin                    → Quản trị hệ thống (T7)
  *
  * Dùng hash (thay vì history API) vì app deploy dạng static trên Cloudflare Pages —
  * refresh ở bất kỳ hash nào cũng vẫn tải index.html, không cần cấu hình redirect.
@@ -17,7 +19,9 @@
 export type Route =
   | { nav: 'overview' }
   | { nav: 'processes'; processId?: string; mode?: 'edit' | 'review'; versionId?: string }
-  | { nav: 'executions'; executionId?: string };
+  | { nav: 'executions'; executionId?: string }
+  | { nav: 'reports' }
+  | { nav: 'admin' };
 
 /** Đọc route hiện tại từ location.hash. Hash lạ/không hợp lệ → overview. */
 export function parseHash(hash?: string): Route {
@@ -37,6 +41,12 @@ export function parseHash(hash?: string): Route {
     const executionId = parts[1];
     return executionId ? { nav: 'executions', executionId } : { nav: 'executions' };
   }
+  if (parts[0] === 'reports') {
+    return { nav: 'reports' };
+  }
+  if (parts[0] === 'admin') {
+    return { nav: 'admin' };
+  }
   return { nav: 'overview' };
 }
 
@@ -51,6 +61,12 @@ export function toHash(r: Route): string {
   }
   if (r.nav === 'executions') {
     return r.executionId ? `#/executions/${r.executionId}` : '#/executions';
+  }
+  if (r.nav === 'reports') {
+    return '#/reports';
+  }
+  if (r.nav === 'admin') {
+    return '#/admin';
   }
   return '#/';
 }
