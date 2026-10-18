@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canVersionTransition,
   isEditableState,
+  isVoided,
   nextVersionNo,
   validateVersionForSubmit,
   checkVersionApproval,
@@ -97,12 +98,25 @@ describe('ProcessVersion state machine (SRS v1.6 §7.1, §7.5)', () => {
     expect(canVersionTransition('ACTIVE', 'IN_REVIEW')).toBe(false);
   });
 
-  it('ACTIVE không retire trực tiếp (phải qua SUPERSEDED)', () => {
-    expect(canVersionTransition('ACTIVE', 'RETIRED')).toBe(false);
+  it('D-20: APPROVED -> DRAFT (Hủy phê duyệt)', () => {
+    expect(canVersionTransition('APPROVED', 'DRAFT')).toBe(true);
   });
 
-  it('RETIRED là terminal', () => {
-    for (const s of ALL) expect(canVersionTransition('RETIRED', s)).toBe(false);
+  it('D-20: ACTIVE -> RETIRED (Ngừng)', () => {
+    expect(canVersionTransition('ACTIVE', 'RETIRED')).toBe(true);
+  });
+
+  it('D-20: SUPERSEDED/RETIRED -> IN_REVIEW (Kích hoạt lại, qua duyệt lại)', () => {
+    expect(canVersionTransition('SUPERSEDED', 'IN_REVIEW')).toBe(true);
+    expect(canVersionTransition('RETIRED', 'IN_REVIEW')).toBe(true);
+  });
+
+  it('D-20b: isVoided — "Đã hủy" là cờ voided_at, không phải state', () => {
+    expect(isVoided(null)).toBe(false);
+    expect(isVoided(undefined)).toBe(false);
+    expect(isVoided({})).toBe(false);
+    expect(isVoided({ voidedAt: null })).toBe(false);
+    expect(isVoided({ voidedAt: '2026-10-18T12:00:00.000Z' })).toBe(true);
   });
 
   it('SUPERSEDED không quay lại ACTIVE', () => {
