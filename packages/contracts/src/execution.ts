@@ -77,6 +77,8 @@ export interface ExecutionDto {
   shift: ExecutionShift | null;
   createdBy: string;
   createdByName: string | null;
+  /** Chức vụ của người tạo (nối bằng ", ", null nếu chưa gán chức vụ). */
+  createdByPositions: string | null;
   /** D-14: người thực hiện chính. */
   mainPerformerId: string | null;
   mainPerformerName: string | null;
