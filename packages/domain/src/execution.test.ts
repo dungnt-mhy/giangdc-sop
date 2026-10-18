@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allRequiredStepsDone, assigneeMatchesPositions, canStepTransition, canTransition, checkStepAssignees, generateExecutionCode, isValidShift, normalizeExecutionCreate, photoRequired } from './execution.js';
+import { allRequiredStepsDone, assigneeMatchesPositions, canStartStepByOrder, canStepTransition, canTransition, checkStepAssignees, generateExecutionCode, isValidShift, normalizeExecutionCreate, photoRequired } from './execution.js';
 
 describe('Execution transitions (SRS v1.6 §7.5, Table 5)', () => {
   it('CREATED -> IN_PROGRESS on valid start', () => {
@@ -56,14 +56,58 @@ describe('D-15: luồng duyệt lượt thực hiện', () => {
     expect(canTransition('PENDING_APPROVAL', 'APPROVED')).toBe(true);
   });
 
-  it('không cho gửi duyệt từ trạng thái chưa hoàn thành', () => {
+  it('không cho gửi duyệt từ trạng thái chưa bắt đầu/tạm dừng (D-16: IN_PROGRESS được báo hoàn thành)', () => {
     expect(canTransition('CREATED', 'PENDING_APPROVAL')).toBe(false);
-    expect(canTransition('IN_PROGRESS', 'PENDING_APPROVAL')).toBe(false);
     expect(canTransition('PAUSED', 'PENDING_APPROVAL')).toBe(false);
+  });
+
+  it('D-16: IN_PROGRESS -> PENDING_APPROVAL (báo hoàn thành)', () => {
+    expect(canTransition('IN_PROGRESS', 'PENDING_APPROVAL')).toBe(true);
+  });
+
+  it('D-16: PENDING_APPROVAL -> IN_PROGRESS (hủy báo hoàn thành / từ chối xác nhận)', () => {
+    expect(canTransition('PENDING_APPROVAL', 'IN_PROGRESS')).toBe(true);
   });
 
   it('COMPLETED giữ đường reopen về IN_PROGRESS', () => {
     expect(canTransition('COMPLETED', 'IN_PROGRESS')).toBe(true);
+  });
+});
+
+describe('D-16: bước làm tuần tự (canStartStepByOrder)', () => {
+  it('bước đầu (sortOrder nhỏ nhất) luôn mở', () => {
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'PENDING' }, { sortOrder: 2, state: 'PENDING' }], 1,
+    )).toBe(true);
+  });
+  it('bước 2 mở khi bước 1 DONE', () => {
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'DONE' }, { sortOrder: 2, state: 'PENDING' }], 2,
+    )).toBe(true);
+  });
+  it('bước 2 khóa khi bước 1 PENDING', () => {
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'PENDING' }, { sortOrder: 2, state: 'PENDING' }], 2,
+    )).toBe(false);
+  });
+  it('bước 2 khóa khi bước 1 IN_PROGRESS', () => {
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'IN_PROGRESS' }, { sortOrder: 2, state: 'PENDING' }], 2,
+    )).toBe(false);
+  });
+  it('bước tùy chọn chưa DONE vẫn khóa bước sau', () => {
+    // Bước 1 là tùy chọn (không required) nhưng chưa DONE -> bước 2 bị khóa.
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'PENDING' }, { sortOrder: 2, state: 'PENDING' }, { sortOrder: 3, state: 'PENDING' }], 2,
+    )).toBe(false);
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'DONE' }, { sortOrder: 2, state: 'PENDING' }, { sortOrder: 3, state: 'PENDING' }], 3,
+    )).toBe(false);
+  });
+  it('chỉ cần các bước TRƯỚC đó DONE (bước sau không ảnh hưởng)', () => {
+    expect(canStartStepByOrder(
+      [{ sortOrder: 1, state: 'DONE' }, { sortOrder: 2, state: 'PENDING' }, { sortOrder: 3, state: 'DONE' }], 2,
+    )).toBe(true);
   });
 });
 
