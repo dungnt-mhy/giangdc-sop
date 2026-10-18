@@ -137,28 +137,98 @@ export interface ListExecutionsFilter {
   orgUnitIds: string[] | null; // null = cross-scope (scope.manage), đã audit ở tầng route
   mineUserId?: string;
   state?: string;
+  /** T6 (RPT-001): tìm theo mã hoặc tiêu đề lượt. */
+  q?: string;
+  processId?: string;
+  versionId?: string;
+  /** Ngày tạo từ/đến (YYYY-MM-DD). */
+  from?: string;
+  to?: string;
+  /** Người liên quan: người tạo / người thực hiện chính / người được phân công bước. */
+  userId?: string;
+  /** Đơn vị (lọc tường minh, độc lập với scope quyền). */
+  orgUnitId?: string;
+  /** true = chỉ lượt có ngoại lệ; false = chỉ lượt không có ngoại lệ. */
+  hasException?: boolean;
+  /** T6 (RPT-005): lọc theo danh sách id (drill-down, tối đa 50). */
+  ids?: string[];
   limit?: number;
 }
 
-export async function listExecutions(db: D1Database, f: ListExecutionsFilter): Promise<ExecutionRow[]> {
+/** Escape ký tự đặc biệt cho LIKE (dùng kèm ESCAPE '\'). */
+function escapeLike(raw: string): string {
+  return raw.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+/**
+ * T6 (RPT-001): dựng mệnh đề WHERE lọc lượt từ filter.
+ * Dùng alias bảng `e` cho executions. Đẩy binds vào `args` theo thứ tự.
+ */
+export function buildExecutionFilterConds(f: ListExecutionsFilter, args: unknown[]): string[] {
   const conds: string[] = [];
-  const args: unknown[] = [];
+  const ph = (): string => `?${args.length + 1}`;
   if (f.orgUnitIds !== null) {
-    if (f.orgUnitIds.length === 0) return [];
-    const ph = f.orgUnitIds.map((_, i) => `?${args.length + i + 1}`).join(',');
-    conds.push(`e.org_unit_id IN (${ph})`);
+    if (f.orgUnitIds.length === 0) return ['1 = 0']; // không có scope → rỗng
+    conds.push(`e.org_unit_id IN (${f.orgUnitIds.map(() => ph()).join(',')})`);
     args.push(...f.orgUnitIds);
   }
   if (f.mineUserId) {
     conds.push(
-      `EXISTS (SELECT 1 FROM execution_steps es WHERE es.execution_id = e.id AND es.performer_user_id = ?${args.length + 1})`,
+      `EXISTS (SELECT 1 FROM execution_steps es WHERE es.execution_id = e.id AND es.performer_user_id = ${ph()})`,
     );
     args.push(f.mineUserId);
   }
   if (f.state) {
-    conds.push(`e.state = ?${args.length + 1}`);
+    conds.push(`e.state = ${ph()}`);
     args.push(f.state);
   }
+  if (f.q) {
+    conds.push(`(e.code LIKE ${ph()} ESCAPE '\\' OR e.title LIKE ${ph()} ESCAPE '\\')`);
+    const like = `%${escapeLike(f.q)}%`;
+    args.push(like, like);
+  }
+  if (f.processId) {
+    conds.push(`e.process_id = ${ph()}`);
+    args.push(f.processId);
+  }
+  if (f.versionId) {
+    conds.push(`e.version_id = ${ph()}`);
+    args.push(f.versionId);
+  }
+  if (f.from) {
+    conds.push(`e.created_at >= ${ph()}`);
+    args.push(`${f.from}T00:00:00.000Z`);
+  }
+  if (f.to) {
+    conds.push(`e.created_at <= ${ph()}`);
+    args.push(`${f.to}T23:59:59.999Z`);
+  }
+  if (f.userId) {
+    conds.push(
+      `(e.created_by = ${ph()} OR e.main_performer_id = ${ph()} OR EXISTS (SELECT 1 FROM execution_steps es WHERE es.execution_id = e.id AND es.performer_user_id = ${ph()}))`,
+    );
+    args.push(f.userId, f.userId, f.userId);
+  }
+  if (f.orgUnitId) {
+    conds.push(`e.org_unit_id = ${ph()}`);
+    args.push(f.orgUnitId);
+  }
+  if (f.hasException === true) {
+    conds.push(`EXISTS (SELECT 1 FROM exceptions ex WHERE ex.execution_id = e.id)`);
+  } else if (f.hasException === false) {
+    conds.push(`NOT EXISTS (SELECT 1 FROM exceptions ex WHERE ex.execution_id = e.id)`);
+  }
+  if (f.ids && f.ids.length > 0) {
+    const ids = f.ids.slice(0, 50);
+    conds.push(`e.id IN (${ids.map(() => ph()).join(',')})`);
+    args.push(...ids);
+  }
+  return conds;
+}
+
+export async function listExecutions(db: D1Database, f: ListExecutionsFilter): Promise<ExecutionRow[]> {
+  const args: unknown[] = [];
+  const conds = buildExecutionFilterConds(f, args);
   const where = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
   const limit = Math.min(Math.max(f.limit ?? 50, 1), 200);
   const rows = await db
