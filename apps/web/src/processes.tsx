@@ -337,7 +337,12 @@ function ProcessList({
 
 /* ---------------- Chi tiết quy trình + timeline phiên bản ---------------- */
 
-function VersionBadge({ state }: { state: ProcessVersionState }) {
+function VersionBadge({ version }: { version: ProcessVersionDto }) {
+  // D-20b: "Đã hủy" là cờ voided_at, không phải state — ưu tiên hiện thay cho badge state.
+  if (version.voidedAt) {
+    return <span className="vbadge st-void">Đã hủy</span>;
+  }
+  const state = version.state;
   return <span className={`vbadge st-${state.toLowerCase().replace('_', '-')}`}>{STATE_LABEL[state]}</span>;
 }
 
@@ -361,6 +366,12 @@ function ProcessDetail({
   const [showRelease, setShowRelease] = React.useState<ProcessVersionDto | null>(null);
   const [effectiveFrom, setEffectiveFrom] = React.useState('');
   const [releaseMode, setReleaseMode] = React.useState<'now' | 'scheduled'>('now');
+  /** D-20: modal vòng đời phiên bản (hủy phê duyệt / ngừng / kích hoạt lại / hủy bỏ). */
+  const [lifeAction, setLifeAction] = React.useState<{
+    kind: 'cancel-approval' | 'retire' | 'reactivate' | 'void';
+    v: ProcessVersionDto;
+  } | null>(null);
+  const [lifeReason, setLifeReason] = React.useState('');
 
   const load = React.useCallback(async () => {
     try {
@@ -425,12 +436,30 @@ function ProcessDetail({
     }
   }
 
-  async function retire(v: ProcessVersionDto) {
-    if (!window.confirm(`Ngừng dùng bản v${v.versionNo}? Lịch sử tra cứu vẫn giữ (GOV-007).`)) return;
+  const LIFE_ACTION_META = {
+    'cancel-approval': { title: 'Hủy phê duyệt', btn: 'Hủy phê duyệt', danger: true, needReason: true,
+      desc: 'Bản về lại Nháp để soạn tiếp. Lịch sử phê duyệt được giữ.' },
+    retire: { title: 'Ngừng bản đang hiệu lực', btn: 'Ngừng', danger: true, needReason: false,
+      desc: 'Bản chuyển sang Ngừng dùng. Lịch sử tra cứu vẫn giữ (GOV-007).' },
+    reactivate: { title: 'Kích hoạt lại', btn: 'Kích hoạt lại', danger: false, needReason: false,
+      desc: 'Bản quay lại Chờ thẩm định để duyệt lại từ đầu. Yêu cầu: không còn bản nào đang hiệu lực.' },
+    void: { title: 'Hủy bỏ phiên bản', btn: 'Hủy bỏ', danger: true, needReason: true,
+      desc: 'Đánh dấu bản Đã hủy (giữ nguyên trạng thái cũ). Bản bị đóng băng: không kích hoạt lại hay thao tác tiếp được.' },
+  } as const;
+
+  async function doLifeAction() {
+    if (!lifeAction || busy) return;
+    const meta = LIFE_ACTION_META[lifeAction.kind];
+    if (meta.needReason && !lifeReason.trim()) return;
     setBusy(true);
     setError('');
     try {
-      await api(`/versions/${v.id}/retire`, { method: 'POST', body: JSON.stringify({}) });
+      await mut(`/versions/${lifeAction.v.id}/${lifeAction.kind}`, 'POST', {
+        reason: lifeReason.trim() || undefined,
+        expectedRevision: lifeAction.v.revision,
+      }, true);
+      setLifeAction(null);
+      setLifeReason('');
       await load();
     } catch (e) {
       setError(errMsg(e));
@@ -471,14 +500,19 @@ function ProcessDetail({
             <div className="ver-row" key={v.id}>
               <div className="ver-no">v{v.versionNo}</div>
               <div className="ver-main">
-                <VersionBadge state={v.state} />
+                <VersionBadge version={v} />
                 <div className="ver-sum">{v.changeSummary || <span className="muted">Chưa có mô tả thay đổi</span>}</div>
                 <div className="ver-meta">
                   Tạo bởi {v.createdByName ?? '—'} · {new Date(v.createdAt).toLocaleString('vi-VN')}
                   {v.effectiveFrom ? ` · Hiệu lực từ ${new Date(v.effectiveFrom).toLocaleString('vi-VN')}` : ''}
                 </div>
+                {v.voidedAt && (
+                  <div className="ver-void">Đã hủy lúc {new Date(v.voidedAt).toLocaleString('vi-VN')}{v.voidReason ? ` · Lý do: ${v.voidReason}` : ''}</div>
+                )}
               </div>
               <div className="ver-actions">
+                {/* D-20b: bản đã hủy thì ẩn toàn bộ nút hành động. */}
+                {!v.voidedAt && (<>
                 {v.state === 'DRAFT' && can(perms, 'process.edit') && (
                   <button className="btn-small" onClick={() => onEditVersion(v)}>Soạn thảo</button>
                 )}
@@ -488,12 +522,25 @@ function ProcessDetail({
                 {v.state === 'APPROVED' && can(perms, 'process.publish') && (
                   <button className="btn-small primary" onClick={() => { setReleaseMode('now'); setEffectiveFrom(''); setShowRelease(v); }} disabled={busy}>Phát hành</button>
                 )}
+                {v.state === 'APPROVED' && can(perms, 'process.approve') && (
+                  <button className="btn-small ghost" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'cancel-approval', v }); }} disabled={busy}>Hủy phê duyệt</button>
+                )}
                 {v.state === 'SCHEDULED' && can(perms, 'process.publish') && (
                   <button className="btn-small primary" onClick={() => activate(v)} disabled={busy}>Kích hoạt</button>
                 )}
-                {v.state === 'SUPERSEDED' && can(perms, 'process.deprecate') && (
-                  <button className="btn-small ghost" onClick={() => retire(v)} disabled={busy}>Ngừng dùng</button>
+                {v.state === 'ACTIVE' && can(perms, 'process.deprecate') && (
+                  <button className="btn-small ghost" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'retire', v }); }} disabled={busy}>Ngừng</button>
                 )}
+                {v.state === 'SUPERSEDED' && can(perms, 'process.deprecate') && (
+                  <button className="btn-small ghost" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'retire', v }); }} disabled={busy}>Ngừng dùng</button>
+                )}
+                {(v.state === 'SUPERSEDED' || v.state === 'RETIRED') && can(perms, 'process.edit') && (
+                  <button className="btn-small" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'reactivate', v }); }} disabled={busy}>Kích hoạt lại</button>
+                )}
+                {(v.state === 'SUPERSEDED' || v.state === 'RETIRED') && can(perms, 'process.deprecate') && (
+                  <button className="btn-small danger" onClick={() => { setLifeReason(''); setLifeAction({ kind: 'void', v }); }} disabled={busy}>Hủy bỏ</button>
+                )}
+                </>)}
               </div>
             </div>
           ))}
@@ -546,6 +593,35 @@ function ProcessDetail({
                 disabled={busy || (releaseMode === 'scheduled' && !effectiveFrom)}
               >
                 {busy ? 'Đang phát hành…' : 'Phát hành'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lifeAction && (
+        <div className="modal-backdrop" onClick={() => setLifeAction(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{LIFE_ACTION_META[lifeAction.kind].title} — bản v{lifeAction.v.versionNo}</h3>
+            <p className="sec-desc">{LIFE_ACTION_META[lifeAction.kind].desc}</p>
+            <div className="field">
+              <label>Lý do {LIFE_ACTION_META[lifeAction.kind].needReason ? '*' : '(không bắt buộc)'}</label>
+              <textarea
+                className="input"
+                rows={3}
+                value={lifeReason}
+                onChange={(e) => setLifeReason(e.target.value)}
+                placeholder="Ghi rõ lý do…"
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-ghost" onClick={() => setLifeAction(null)}>Hủy bỏ</button>
+              <button
+                className={LIFE_ACTION_META[lifeAction.kind].danger ? 'btn-small danger' : 'btn-primary'}
+                onClick={doLifeAction}
+                disabled={busy || (LIFE_ACTION_META[lifeAction.kind].needReason && !lifeReason.trim())}
+              >
+                {busy ? 'Đang xử lý…' : LIFE_ACTION_META[lifeAction.kind].btn}
               </button>
             </div>
           </div>
@@ -1199,7 +1275,7 @@ function VersionReview({
       <div className="proc-head">
         <div>
           <div className="proc-code big">Bản v{v.versionNo}</div>
-          <h2 className="page-title"><VersionBadge state={v.state} /></h2>
+          <h2 className="page-title"><VersionBadge version={v} /></h2>
           <p className="page-sub">{v.changeSummary || '—'}{v.changeSize ? ` · Mức: ${v.changeSize === 'MAJOR' ? 'Lớn' : 'Nhỏ'}` : ''}</p>
         </div>
         <div className="ver-actions">
