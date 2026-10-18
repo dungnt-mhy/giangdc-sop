@@ -1,5 +1,31 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
+Cập nhật: 19/10/2026 (T7 admin hoàn thành code, chưa deploy/kiểm thử trình duyệt).
+
+## T7 — Quản trị người dùng/vai trò (ADM-001..006) — HOÀN THÀNH CODE 19/10/2026 (subagent, user duyệt "Làm full tất cả")
+- **Migration 0015** (`apps/api/migrations/0015_admin.sql`, CHƯA apply D1): bảng `reason_catalog`
+  (id, code UNIQUE, category CHECK cancel|skip|fail|reject, label, is_active, created_at) + 9 lý do mẫu seed.
+- **Contract** (`packages/contracts/src/admin.ts`): AdminUserDto, CreateUserBody, UpdateUserBody,
+  AssignRolesBody/PositionsBody, RoleWithPermissionsDto, AuditEventDto, ReasonDto + REASON_CATEGORY_LABEL,
+  USER_STATUS_LABEL, ADMIN_ERROR_CODES.
+- **API** (`apps/api/src/admin.ts` + `adminDb.ts`, mount `/admin` trong index.ts; guard `user.manage`
+  cho toàn bộ): GET/POST /admin/users, PATCH /admin/users/:id (cấm tự khóa: 409 CANNOT_LOCK_SELF),
+  POST /admin/users/:id/roles|positions (thay thế toàn bộ), GET /admin/roles (kèm permissions,
+  read-only), GET /admin/positions, GET /admin/audit (lọc from/to/actorId/action/objectType/q,
+  limit ≤ 50), GET/POST/PATCH /admin/reasons. Mutations dùng Idempotency-Key. Audit ghi
+  user.create/update/password_change/roles_assign/positions_assign/reason.create/update —
+  KHÔNG ghi password (ADM-003, đã grep kiểm tra).
+- **Web** (`apps/web/src/admin.tsx`, route `#/admin`): 4 tab Người dùng (tìm kiếm/lọc, thêm/sửa,
+  khóa/mở, dialog gán vai trò/chức vụ checkbox) · Vai trò (read-only + chips quyền) ·
+  Lý do (CRUD + bật/tắt) · Nhật ký (lọc thời gian/action/từ khóa + phân trang).
+  Sidebar thêm "⚙ Quản trị" (chỉ hiện khi có `user.manage`).
+- **Giả định:** mật khẩu tối thiểu 8 ký tự (không có policy trong SRS — quy ước mới);
+  audit dùng `user.manage` (không dùng `audit.view` riêng) theo task; không có API xóa user.
+- **Evidence:** `pnpm -r exec tsc --noEmit` 0 lỗi; `pnpm test` **144/144** (107 domain + 37 API,
+  gồm 15 test admin mới); `pnpm --filter giangdc-sop-web build` pass; migration 0015
+  validate bằng sqlite3. KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+
 Cập nhật: 18/10/2026 (D-22 hash-routing hoàn thành code, chờ deploy + kiểm thử trình duyệt).
 
 ## D-22 — Hash-routing: refresh không về trang tổng quan (18/10/2026 tối)
@@ -453,3 +479,13 @@ Cập nhật: 18/10/2026 (D-22 hash-routing hoàn thành code, chờ deploy + ki
 - Không đổi: desktop layout, logic nút, API/domain.
 - `pnpm --filter giangdc-sop-web build` pass; `tsc --noEmit` 0 lỗi.
 - Chưa deploy/commit/push/browser-test (parent làm).
+
+## D-26 — T6 Báo cáo/KPI/Xuất file (RPT-001..006) (19/10/2026)
+- **Contract** (`packages/contracts/src/report.ts`, mới): `ExecutionFilterQuery`, `KpiRatio`, `KpiCycleTime`, `KpiReport`, `EXECUTION_EXPORT_COLUMNS/HEADERS`, `ExecutionExportRow`.
+- **Domain** (`packages/domain/src/kpi.ts`, mới): `rate` (mẫu 0 → null), `median`, `percentile` (nội suy tuyến tính), `hoursBetween`. Test `kpi.test.ts`: 12 test.
+- **DB** (`apps/api/src/executionDb.ts`): `ListExecutionsFilter` mở rộng (q/processId/versionId/from/to/userId/orgUnitId/hasException/ids); `buildExecutionFilterConds` dùng chung (LIKE escape ký tự đặc biệt, ngày → UTC day-range).
+- **API** (`apps/api/src/reports.ts`, mới): `computeKpiReport` (6 query tổng hợp trên cùng tập lọc), `fetchExportRows`, `toExportRow`, `buildCsv` (BOM UTF-8, escape CSV). Routes trong `executions.ts`: `GET /executions` (filter mới), `GET /executions/export` (trước `/:id`), `GET /reports/kpi` — tất cả quyền `execution.view`.
+- **UI** (`apps/web/src/reports.tsx`, mới): `#/reports`, menu "📊 Báo cáo" chỉ hiện khi có `execution.view`; bộ lọc ngày/quy trình/trạng thái; 6 thẻ KPI (N/A khi thiếu dữ liệu, definition hiện ở title + chữ nhỏ); nút Xuất CSV; popup drill-down (≤50 lượt, bấm vào nhảy sang chi tiết lượt). `EXEC_STATE_LABEL` export từ `executions.tsx` để dùng chung.
+- **Giả định đã ghi trong definition**: completed_at = approved_at (fallback bước cuối cho lượt COMPLETED đời cũ); on_time_rate luôn N/A (chưa có cột due date); right_first_time ánh xạ "decision REWORK" của SRS = reject trong nhật ký duyệt.
+- Test: API `reports.test.ts` 9 test (filter SQL, CSV, KPI đúng số + N/A khi rỗng); domain 107 pass; API 37 pass; `tsc --noEmit` 0 lỗi; web build pass.
+- Chưa deploy/push (parent làm). Không migration mới (dùng cột hiện có).
