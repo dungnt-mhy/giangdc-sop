@@ -5,3 +5,4 @@ export * from './sod.js';
 export * from './scope.js';
 export * from './process.js';
 export * from './auth.js';
+export * from './kpi.js';
