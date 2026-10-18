@@ -1,6 +1,6 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (D-18 hoàn thành code, chờ apply migration + deploy + kiểm thử trình duyệt).
+Cập nhật: 18/10/2026 (D-19 hoàn thành code, chờ deploy + kiểm thử trình duyệt).
 
 ## Đã verified
 
@@ -216,7 +216,21 @@ Cập nhật: 18/10/2026 (D-18 hoàn thành code, chờ apply migration + deploy
 
 ## Đang dở
 
-- Chưa có.
+- **D-19: thiết kế lại thẻ bước theo mẫu — HOÀN THÀNH CODE 18/10/2026 (subagent, user duyệt + chọn "Ngoại lệ để sau").**
+  - Web (`apps/web/src/executions.tsx`, `index.css`, `processes.tsx` export ProcessDiagram) — chỉ UI:
+    1. Header "Các bước (N)" + toggle Danh sách/Sơ đồ (`.seg-toggle`, active navy);
+       Sơ đồ tái dùng `ProcessDiagram` (adapter ExecutionStepDto → {id, code, title,
+       sortOrder, required, skip}, view-only, không click).
+    2. Thẻ bước: dòng 1 badge số navy inline + "mã — tên" + chip trạng thái;
+       dòng 2 nút "Bắt đầu" (`.btn-start` navy) + "👥 Phân công" (`.btn-assign` xám nhạt)
+       — giữ nguyên mọi điều kiện hiển thị; dòng "Chưa phân công" (xám) khi chưa gán.
+    3. "▶/▼ 📋 Chi tiết bước" (đổi tên từ "📖 Xem hướng dẫn chi tiết"), giữ panel collapse.
+    4. Khối "📷 Bằng chứng" (`.step-evidence`): thumbnails + 3 nút upload (khi được phép)
+       + ghi chú "Ảnh được nén trước khi tải lên (tối đa 5MB). Tệp: PDF, Word, Excel, tối đa 5MB."
+    5. KHÔNG vẽ UI ngoại lệ (user chốt để T5 sau).
+  - Bỏ timeline dọc `.exec-step-list::before` (badge chuyển inline); `.step-num` inline.
+  - Build: `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **97/97**, web build ✓.
+  - Chưa deploy/commit/push (parent tự làm); kiểm thử trình duyệt chờ parent agent.
 
 ## Hạ tầng đã có
 
