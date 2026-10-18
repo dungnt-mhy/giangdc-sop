@@ -1,8 +1,33 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (T3 hoàn thành).
+Cập nhật: 18/10/2026 (D-14 hoàn thành).
 
 ## Đã verified
+
+- **D-14: thiết kế lại luồng tạo lượt thực hiện — HOÀN THÀNH 18/10/2026 (subagent, user duyệt "Đồng ý").**
+  - Migration 0008 (`apps/api/migrations/0008_execution_extras.sql`): `executions` thêm
+    `title`, `execution_date`, `execution_time`, `shift`, `main_performer_id`,
+    `supervisor_id` (nullable) — đã apply D1 demo (6 ALTER OK).
+  - Contract (`packages/contracts/src/execution.ts`): `CreateExecutionBody` thêm 7 trường
+    D-14, `assignments` thành optional; mới `AssignStepBody`, `ExecutionShift`;
+    `ExecutionDto` thêm title/executionDate/executionTime/shift/mainPerformer(Id/Name)/supervisor(Id/Name).
+  - Domain (`packages/domain/src/execution.ts`): `normalizeExecutionCreate`
+    (default ngày=hôm nay, người tạo=người gọi; validate YYYY-MM-DD/HH:MM/enum ca),
+    `checkStepAssignees`, `isValidShift` — test fail-first, **77/77 đạt** (65 cũ + 12 mới).
+  - API (`apps/api/src/executions.ts`, `executionDb.ts`): POST /executions nhận trường mới,
+    validate user tồn tại, assignments optional → bước thiếu gán = NULL ("chưa phân công");
+    MỚI POST /executions/:id/steps/:stepId/assign (quyền execution.operate,
+    tái kiểm tra chức vụ như lúc tạo, chặn khi bước DONE/lượt COMPLETED/CANCELLED,
+    Idempotency-Key bắt buộc đúng tên); `toExecutionDto` JOIN tên người mới.
+    OpenAPI bổ sung: `docs/openapi-t3-d14.yaml`.
+  - Web (`apps/web/src/executions.tsx`): form tạo lượt viết lại đơn giản
+    (Quy trình* chỉ bản ACTIVE + Tiêu đề + Ngày* + Giờ + Ca + Người tạo* + Người thực hiện
+    chính + Người giám sát → Tạo → tự chuyển sang chi tiết); chi tiết lượt hiện trường mới;
+    mỗi bước PENDING có nút "Bắt đầu" + "👥 Phân công"; dialog phân công hiện
+    "Tên — Chức vụ", lọc theo vai trò bước; bước chưa phân công: bấm Bắt đầu tự gán
+    cho người bấm nếu chức vụ khớp. Giữ nguyên chụp ảnh/bằng chứng.
+  - Build: `tsc --noEmit` ✓, eslint ✓, web build ✓ (chưa deploy — parent tự deploy sau verify).
+  - Kiểm thử trình duyệt: chờ parent agent (subagent không có live browser).
 
 - **T3: Lượt thực hiện + Chụp ảnh bằng chứng — HOÀN THÀNH 18/10/2026 (D-12).**
   - Contract: `packages/contracts/src/execution.ts` (ExecutionDto, ExecutionStepDto,
