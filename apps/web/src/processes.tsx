@@ -197,6 +197,30 @@ async function mut(path: string, method: string, body: unknown, useIdem = false)
 
 /* ---------------- Danh sách quy trình (PRC-002) ---------------- */
 
+/**
+ * Chip trạng thái quy trình theo bản thực tế (D-13).
+ * "Đang dùng" = đã có bản phát hành đang hiệu lực (không còn chờ).
+ */
+function ProcessStatusChip({ p }: { p: ProcessDto }) {
+  if (p.status === 'ARCHIVED') {
+    return <span className="chip muted">Đã lưu trữ</span>;
+  }
+  if (p.activeVersionNo != null) {
+    return <span className="chip ok">Đang dùng · v{p.activeVersionNo}</span>;
+  }
+  if (p.hasScheduledVersion) {
+    return <span className="chip warn">Chờ hiệu lực</span>;
+  }
+  switch (p.latestVersionState) {
+    case 'IN_REVIEW':
+      return <span className="chip warn">Chờ thẩm định</span>;
+    case 'APPROVED':
+      return <span className="chip warn">Chờ phát hành</span>;
+    default:
+      return <span className="chip">Soạn thảo</span>;
+  }
+}
+
 function ProcessList({
   perms,
   onOpen,
@@ -273,9 +297,7 @@ function ProcessList({
             <div className="proc-name">{p.name}</div>
             <div className="proc-meta">
               <span className="chip">{p.processGroup}</span>
-              <span className={`chip ${p.status === 'ACTIVE' ? 'ok' : 'muted'}`}>
-                {p.status === 'ACTIVE' ? 'Đang dùng' : 'Đã lưu trữ'}
-              </span>
+              <ProcessStatusChip p={p} />
             </div>
             <div className="proc-creator">
               Người tạo: {p.createdByName ?? '—'} · Ngày tạo: {fmtDate(p.createdAt)}
