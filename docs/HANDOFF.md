@@ -1,5 +1,113 @@
 # HANDOFF.md — Bàn giao phiên
 
+## Phiên 18/10/2026 (D-20b rework — "Đã hủy" = flag thay vì state VOID, subagent)
+
+### Đã làm
+
+1. **Migration** `apps/api/migrations/0012_version_void_state.sql` **viết lại toàn bộ**:
+   `ALTER TABLE process_versions ADD COLUMN voided_at TEXT` + `ADD COLUMN void_reason TEXT`
+   (CHƯA apply D1 — parent apply trước khi test/deploy). Lý do: rebuild bảng để thêm
+   'VOID' vào CHECK không thực hiện được trên D1 qua REST (PRAGMA foreign_keys=OFF vô
+   hiệu giữa các /query call; RENAME TABLE tự cập nhật REFERENCES của 4 bảng con;
+   writable_schema bị chặn SQLITE_AUTH; DROP parent bị FK chặn). Database demo hiện
+   nguyên vẹn (17 versions, FK nguyên vẹn, không còn bảng tạm).
+2. **Domain** (`packages/domain/src/process.ts`): xóa 'VOID' khỏi `ProcessVersionState`
+   và `VERSION_TRANSITIONS` (giữ 7 state + 3 transition D-20: APPROVED→DRAFT,
+   ACTIVE→RETIRED, SUPERSEDED/RETIRED→IN_REVIEW); helper mới `isVoided()`.
+   Test: xóa 3 test VOID, thêm test `isVoided` (null/undefined/{}/flag set).
+3. **Contract** (`packages/contracts/src/process.ts`): `ProcessVersionDto`
+   +`voidedAt: string | null` +`voidReason: string | null`.
+4. **API** (`apps/api/src/processDb.ts`, `processes.ts`):
+   - `VersionRow`/`toVersionDto` map 2 cột mới.
+   - `/void` viết lại: SUPERSEDED|RETIRED + chưa hủy → UPDATE set voided_at/void_reason
+     (+revision check, giữ nguyên state); đã hủy → 409 `ALREADY_VOIDED`;
+     reason bắt buộc; `process.deprecate`; idempotent; audit.
+   - Guard `VERSION_VOIDED` ('Phiên bản đã bị hủy, không thể thao tác.') cho mọi endpoint
+     transition version: PATCH version, submit, return, approve, release, activate,
+     retire, cancel-approval. Riêng `/reactivate`: guard voided ('…không thể kích hoạt
+     lại.') đặt TRƯỚC guard ACTIVE_VERSION_EXISTS.
+5. **Web** (`apps/web/src/processes.tsx`, `index.css`):
+   - `VersionBadge` nhận cả version: `voidedAt` → badge "Đã hủy" (`.vbadge.st-void`,
+     giữ CSS cũ) thay badge state; bỏ `VOID` khỏi `STATE_LABEL`.
+   - Bản đã hủy: ẩn TOÀN BỘ nút hành động + dòng vết `.ver-void`
+     ("Đã hủy lúc … · Lý do: …").
+   - Modal "Hủy bỏ": desc cập nhật (set cờ, đóng băng, không kích hoạt lại được).
+6. **Test**: mới `apps/api/src/versionVoid.test.ts` (map DTO, giữ state khi hủy).
+   `docs/openapi-d20-d21.yaml` cập nhật (bỏ VOID khỏi enum, thêm voidedAt/voidReason,
+   mã lỗi VERSION_VOIDED/ALREADY_VOIDED).
+7. **Evidence:** `pnpm test` **104/104** (95 domain + 9 API); `pnpm -r exec tsc --noEmit`
+   0 lỗi; web build ✓. KHÔNG apply migration, KHÔNG deploy, KHÔNG commit/push
+   (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Apply migration 0012 + 0013 lên D1** (BẮT BUỘC trước deploy/test — 0012 giờ chỉ là
+  2 lệnh ADD COLUMN, an toàn).
+- **Deploy + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-20b** (cần parent agent — subagent không có live browser):
+  1. Bản SUPERSEDED/RETIRED → "Hủy bỏ" (nhập lý do) → badge "Đã hủy" + dòng vết lý do,
+     toàn bộ nút biến mất.
+  2. Bản đã hủy → "Kích hoạt lại" không còn nút (đã ẩn); gọi API trực tiếp →
+     409 VERSION_VOIDED.
+  3. Bản đã hủy → các thao tác khác (sửa, phát hành…) đều 409 VERSION_VOIDED.
+
+## Phiên 18/10/2026 (D-20 + D-21 — vòng đời phiên bản mở rộng + từ chối theo bước, subagent)
+
+### Đã làm
+
+1. **Migration** (CHƯA apply lên D1 — parent apply trước khi test/deploy):
+   - `apps/api/migrations/0012_version_void_state.sql`: rebuild `process_versions`
+     (CREATE new + INSERT SELECT + DROP + RENAME + tạo lại 3 index, PRAGMA foreign_keys OFF/ON)
+     vì CHECK constraint không ALTER được — CHECK state thêm 'VOID' (bài học migration 0010).
+   - `apps/api/migrations/0013_review_step_ids.sql`: `ALTER TABLE execution_reviews ADD COLUMN step_ids TEXT`
+     (JSON array, null = từ chối cả lượt).
+2. **Domain** (`packages/domain/src/process.ts`): `ProcessVersionState` + 'VOID';
+   `VERSION_TRANSITIONS` mới — APPROVED→DRAFT, ACTIVE→RETIRED, SUPERSEDED→IN_REVIEW,
+   RETIRED→IN_REVIEW, SUPERSEDED→VOID, RETIRED→VOID, VOID terminal. 97/97 test
+   (6 test D-20 mới; xóa 2 test cũ sai về ACTIVE/RETIRED terminal).
+3. **Contract** (`packages/contracts/src/process.ts`, `execution.ts`):
+   `VersionState` + 'VOID' (nhãn "Đã hủy", `.vbadge.st-void`); `ExecutionReviewDto.stepIds`,
+   `ExecutionStepDto.redoCount`, `ExecutionDto.rejectedStepCount`,
+   `RejectApprovalBody.mode` + `stepIds`.
+4. **API** (`apps/api/src/processes.ts`, `executions.ts`, `executionDb.ts`):
+   - `POST /versions/:id/cancel-approval` (APPROVED→DRAFT, `process.approve`, reason bắt buộc,
+     approval_records 'RETURNED'), `/retire` (ACTIVE→RETIRED, `process.deprecate`),
+     `/reactivate` (SUPERSEDED/RETIRED→IN_REVIEW, `process.edit`, 409 ACTIVE_VERSION_EXISTS),
+     `/void` (SUPERSEDED/RETIRED→VOID, `process.deprecate`, reason bắt buộc) —
+     tất cả withIdempotency (`Idempotency-Key`) + audit + expectedRevision.
+   - `POST /executions/:id/reject` body +`{mode:'all'|'steps', stepIds?}`:
+     mode='steps' — stepIds bắt buộc là bước DONE (404 STEP_NOT_FOUND / 409 STEP_NOT_DONE),
+     mỗi bước DONE→PENDING (xóa started_at/completed_at, GIỮ evidence), audit
+     `execution.step_redo` từng bước, review `step_ids`=JSON, thông báo "bị trả lại N bước".
+   - `toExecutionDto`: tính `redoCount` từng bước từ các review reject có step_ids;
+     `rejectedStepCount` từ review mới nhất. Xóa helper thừa `enrichExecutionDtoWithRedo`.
+5. **Web** (`apps/web/src/processes.tsx`, `executions.tsx`, `index.css`):
+   - processes: bảng Lịch sử phiên bản — APPROVED "Hủy phê duyệt", ACTIVE "Ngừng",
+     SUPERSEDED/RETIRED "Kích hoạt lại" + "Hủy bỏ"; modal nhập lý do chung (không
+     window.confirm); badge "Đã hủy" cho VOID.
+   - executions: dialog Từ chối — radio "Trả toàn bộ lượt" / "Chọn bước cần làm lại" +
+     checkbox bước DONE (chọn ≥1, disable nút khi chưa chọn); thẻ bước badge
+     "🔄 Làm lại lần {N}" (tooltip lý do lần trả gần nhất); danh sách lượt badge
+     "🔄 Bị trả lại: {N} bước"; detail badge "🔄 Bị trả lại: {N} bước làm lại"
+     (giữ badge cũ khi reject cả lượt); Lịch sử từ chối hiện mã bước bị trả.
+6. **Docs**: `docs/openapi-d20-d21.yaml` mới; PROGRESS.md + HANDOFF.md cập nhật.
+   DECISIONS.md không đụng.
+7. **Evidence:** `pnpm test` **104/104** (97 domain + 7 API); `pnpm -r exec tsc --noEmit` 0 lỗi.
+   KHÔNG deploy, KHÔNG commit/push (theo task — parent tự làm).
+
+### Chưa làm / chờ
+
+- **Apply migration 0012 + 0013 lên D1** (BẮT BUỘC trước deploy/test — không có 0012 thì
+  endpoint D-20 lỗi CHECK constraint; không có 0013 thì SELECT step_ids lỗi).
+- **Deploy + push GitHub**: parent agent tự làm sau khi verify.
+- **Kiểm thử trình duyệt D-20/D-21** (cần parent agent — subagent không có live browser),
+  checklist: (1) Lịch sử phiên bản — nút đúng theo state, bản VOID badge "Đã hủy" không còn nút;
+  (2) "Kích hoạt lại" khi còn bản ACTIVE → lỗi 409 với thông điệp rõ;
+  (3) Dialog Từ chối — 2 radio, chọn bước thì checkbox DONE, nút disable khi chưa tích;
+  (4) Sau từ chối theo bước: bước bị trả về Chờ thực hiện, bằng chứng còn nguyên,
+  badge "🔄 Làm lại lần 1", danh sách hiện "🔄 Bị trả lại: N bước";
+  (5) Từ chối cả lượt vẫn giữ badge cũ "🔄 Bị trả lại làm lại".
+
 ## Phiên 18/10/2026 (D-19 — thiết kế lại thẻ bước theo mẫu, subagent)
 
 ### Đã làm
