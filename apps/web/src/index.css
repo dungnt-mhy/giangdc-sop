@@ -1862,18 +1862,8 @@ img.logo-img {
 }
 .exec-meta-value { font-size: 0.88rem; font-weight: 600; color: #1e293b; word-break: break-word; }
 
-/* Timeline dọc nối các thẻ bước */
+/* Timeline dọc nối các thẻ bước — D-19: bỏ (badge số chuyển inline trong thẻ) */
 .exec-step-list { position: relative; }
-.exec-step-list::before {
-  content: '';
-  position: absolute;
-  left: 1.85rem;
-  top: 1.6rem;
-  bottom: 1.6rem;
-  width: 2px;
-  background: #e2e8f0;
-  border-radius: 2px;
-}
 
 /* Thẻ bước: viền trái dày + màu theo trạng thái */
 .exec-step {
@@ -1881,7 +1871,7 @@ img.logo-img {
   border: 1px solid #e2e8f0;
   border-left: 4px solid #cbd5e1;
   border-radius: 12px;
-  padding: 0.75rem 0.9rem 0.75rem 3.4rem;
+  padding: 0.85rem 1rem;
   background: #fff;
   box-shadow: 0 1px 4px rgba(8, 18, 38, 0.04);
 }
@@ -1893,11 +1883,9 @@ img.logo-img {
 .exec-step.mine.st-done { border-color: #86c99a; }
 .exec-step.mine.st-progress { border-color: #93b4f5; }
 
-/* Số thứ tự bước: badge tròn nổi trên timeline */
+/* Số thứ tự bước: badge tròn inline ở đầu thẻ (D-19) */
 .step-num {
-  position: absolute;
-  left: 0.85rem;
-  top: 0.85rem;
+  flex: 0 0 auto;
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
@@ -1908,9 +1896,7 @@ img.logo-img {
   font-weight: 700;
   background: #0c1a38;
   color: #fff;
-  border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(8, 18, 38, 0.12);
-  z-index: 1;
 }
 .st-done .step-num { background: #16a34a; color: #fff; }
 .st-progress .step-num { background: #2563eb; color: #fff; }
@@ -1977,9 +1963,10 @@ img.logo-img {
   /* Tránh đè lên mobile-topbar sticky (z-index 40) */
   .exec-actions-sticky { top: 58px; border-radius: 10px; }
   .exec-meta-grid { grid-template-columns: repeat(2, 1fr); }
-  .exec-step { padding-left: 3.1rem; }
-  .exec-step-list::before { left: 1.7rem; }
-  .step-num { left: 0.7rem; }
+  /* D-19: nút Bắt đầu / Phân công xếp dọc full-width khi hẹp */
+  .step-card-actions { flex-direction: column; }
+  .step-card-actions .btn-start,
+  .step-card-actions .btn-assign { width: 100%; }
 }
 
 /* D-18: Thông tin lượt công việc */
@@ -2015,3 +2002,127 @@ img.logo-img {
 .reject-item + .reject-item { border-top: 1px solid #e2e8f0; }
 .reject-head { font-size: 0.95rem; margin-bottom: 0.15rem; }
 .exec-info .exec-progress-bar { margin: 0.25rem 0; }
+
+/* D-19: thiết kế lại thẻ bước theo mẫu */
+/* Header "Các bước (N)" + toggle Danh sách / Sơ đồ */
+.steps-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+.steps-head h3 { margin: 0; }
+.seg-toggle {
+  display: inline-flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+.seg-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: #64748b;
+  cursor: pointer;
+}
+.seg-toggle button.active {
+  background: #0c1a38;
+  color: #fff;
+}
+
+/* Thẻ bước: dòng 1 (badge + mã — tên + chip) */
+.step-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
+}
+.step-card-title {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  min-width: 0;
+}
+.step-card-title code {
+  font-weight: 700;
+  color: #0c1a38;
+}
+
+/* Dòng 2: nút hành động */
+.step-card-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.55rem;
+}
+.btn-start {
+  border: 0;
+  border-radius: 10px;
+  background: #0c1a38;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.55rem 1.4rem;
+  cursor: pointer;
+}
+.btn-start:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-assign {
+  border: 0;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #0c1a38;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.55rem 1.1rem;
+  cursor: pointer;
+}
+.btn-assign:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-assign:hover { background: #e2e8f0; }
+
+/* Người thực hiện */
+.step-card-assignee {
+  font-size: 0.85rem;
+  color: #334155;
+  margin-bottom: 0.35rem;
+}
+.step-card-assignee.unassigned { color: #94a3b8; }
+
+/* Nút "Chi tiết bước" dạng khối bo góc như mẫu */
+.step-guide { margin-top: 0.6rem; }
+.guide-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.88rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #0c1a38;
+  cursor: pointer;
+}
+.guide-toggle:hover { background: #f8fafc; }
+
+/* Khối bằng chứng */
+.step-evidence {
+  margin-top: 0.6rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  background: #fbfdff;
+}
+.step-evidence-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0c1a38;
+  margin-bottom: 0.5rem;
+}
+.step-evidence .ev-btn-row { margin-bottom: 0.4rem; }
+.step-evidence .sec-desc { margin: 0.35rem 0 0; }
