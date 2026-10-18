@@ -211,7 +211,7 @@ export function toStepDto(r: StepRow, posById: Map<string, PositionDto>): Proces
 
 export async function listProcesses(
   db: D1Database,
-  filter: { q?: string; group?: string; status?: string; orgUnitId?: string },
+  filter: { q?: string; group?: string; status?: string; orgUnitId?: string; hasActiveVersion?: boolean },
   limit: number,
   offset: number,
 ): Promise<{ items: ProcessDto[]; total: number }> {
@@ -232,6 +232,9 @@ export async function listProcesses(
   if (filter.orgUnitId) {
     conds.push('p.org_unit_id = ?');
     binds.push(filter.orgUnitId);
+  }
+  if (filter.hasActiveVersion) {
+    conds.push(`EXISTS (SELECT 1 FROM process_versions v WHERE v.process_id = p.id AND v.state = 'ACTIVE')`);
   }
   const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
   const from = 'FROM processes p LEFT JOIN users u ON u.id = p.created_by';
