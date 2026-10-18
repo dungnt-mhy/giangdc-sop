@@ -6,6 +6,7 @@
 import type {
   CompletionKind,
   CompletionRequirementDto,
+  ExceptionSeverity,
   SkipPolicyDto,
 } from './process.js';
 
@@ -204,4 +205,92 @@ export interface NotificationDto {
   refId: string | null;
   isRead: boolean;
   createdAt: string;
+}
+
+/* ---------- Exceptions (T5, EXP-001..006) ---------- */
+
+/** EXP-003: trạng thái ngoại lệ. */
+export type ExceptionStatus =
+  | 'OPEN'
+  | 'IN_REMEDIATION'
+  | 'RESOLVED'
+  | 'CONDITIONAL_CONTINUE'
+  | 'ESCALATED'
+  | 'CANCELLED';
+
+/** EXP-003: hành động xử lý của giám sát. */
+export type ExceptionHandleAction = 'REWORK' | 'CONDITIONAL_CONTINUE' | 'CANCEL' | 'ESCALATE';
+
+export const EXCEPTION_SEVERITY_LABEL: Record<ExceptionSeverity, string> = {
+  LOW: 'Thấp',
+  MEDIUM: 'Trung bình',
+  HIGH: 'Cao',
+  BLOCKING: 'Chặn lượt',
+};
+
+export const EXCEPTION_STATUS_LABEL: Record<ExceptionStatus, string> = {
+  OPEN: 'Mở',
+  IN_REMEDIATION: 'Đang khắc phục',
+  RESOLVED: 'Đã đóng',
+  CONDITIONAL_CONTINUE: 'Tiếp tục có điều kiện',
+  ESCALATED: 'Đã leo thang',
+  CANCELLED: 'Đã hủy',
+};
+
+export const EXCEPTION_HANDLE_LABEL: Record<ExceptionHandleAction, string> = {
+  REWORK: 'Làm lại',
+  CONDITIONAL_CONTINUE: 'Tiếp tục có điều kiện',
+  CANCEL: 'Hủy ngoại lệ',
+  ESCALATE: 'Leo thang',
+};
+
+/** EXP-001..006: ngoại lệ gắn với bước của lượt. */
+export interface ExceptionDto {
+  id: string;
+  executionId: string;
+  executionStepId: string;
+  stepCode: string;
+  stepTitle: string;
+  severity: ExceptionSeverity;
+  status: ExceptionStatus;
+  title: string;
+  description: string;
+  snapshotJson: string | null;
+  createdBy: string;
+  createdByName: string | null;
+  createdAt: string;
+  handledBy: string | null;
+  handledByName: string | null;
+  handledAt: string | null;
+  handleAction: ExceptionHandleAction | null;
+  handleNote: string | null;
+  resolution: string | null;
+  resolvedBy: string | null;
+  resolvedByName: string | null;
+  resolvedAt: string | null;
+  escalatedTo: string | null;
+  escalatedToName: string | null;
+  escalatedAt: string | null;
+  escalateReason: string | null;
+}
+
+/** Body tạo ngoại lệ (EXP-001). */
+export interface CreateExceptionBody {
+  severity: ExceptionSeverity;
+  title: string;
+  description: string;
+  expectedRevision?: number;
+}
+
+/** Body xử lý ngoại lệ (EXP-003). */
+export interface HandleExceptionBody {
+  action: ExceptionHandleAction;
+  note?: string;
+  escalateTo?: string;
+  escalateReason?: string;
+}
+
+/** Body đóng ngoại lệ (EXP-005). */
+export interface ResolveExceptionBody {
+  resolution: string;
 }
