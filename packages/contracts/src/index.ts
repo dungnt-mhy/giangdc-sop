@@ -5,6 +5,8 @@
 export const API_CONTRACT_VERSION = '0.1.0';
 export * from './process.js';
 export * from './execution.js';
+export * from './report.js';
+export * from './admin.js';
 
 export interface HealthResponse {
   status: 'ok';
