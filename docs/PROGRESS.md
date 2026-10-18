@@ -1,8 +1,37 @@
 # PROGRESS.md — Trạng thái dự án (nguồn sự thật)
 
-Cập nhật: 18/10/2026 (D-15 hoàn thành).
+Cập nhật: 18/10/2026 (D-16 hoàn thành).
 
 ## Đã verified
+
+- **D-16: bước tuần tự + Báo/Xác nhận hoàn thành — HOÀN THÀNH 18/10/2026 (subagent, user duyệt "Ok").**
+  - Domain (`packages/domain/src/execution.ts`): mới `canStartStepByOrder(steps, targetSortOrder)` —
+    bước chỉ mở khi mọi bước có sortOrder nhỏ hơn đều DONE (áp dụng cả bước tùy chọn);
+    TRANSITIONS thêm `IN_PROGRESS → PENDING_APPROVAL` (báo hoàn thành) và
+    `PENDING_APPROVAL → IN_PROGRESS` (hủy báo/từ chối) — test fail-first, **93/93 đạt**
+    (85 cũ + 8 mới).
+  - API (`apps/api/src/executions.ts`): XÓA endpoint POST `/executions/:id/complete`;
+    `/submit` đổi thành "Báo hoàn thành" — nhận IN_PROGRESS (giữ COMPLETED tương thích)
+    → PENDING_APPROVAL, chuyển logic allRequiredStepsDone sang đây (thiếu → 400
+    STEPS_INCOMPLETE, giữ message cũ); `/cancel-submit` và `/reject` đổi về
+    PENDING_APPROVAL → IN_PROGRESS (giữ lý do bắt buộc); text thông báo: submit →
+    "Lượt … đã báo hoàn thành", approve → "… đã được xác nhận hoàn thành",
+    reject → "… bị từ chối xác nhận: {lý do}".
+    Step start: chỉ cho khi lượt IN_PROGRESS (bỏ CREATED + bỏ auto-transition
+    CREATED→IN_PROGRESS); kiểm tra tuần tự qua `getExecutionSteps` + `canStartStepByOrder`
+    → 409 `STEP_OUT_OF_ORDER` 'Phải hoàn thành các bước trước theo thứ tự.'
+    OpenAPI mới: `docs/openapi-d16.yaml`.
+  - Web (`apps/web/src/executions.tsx`): EXEC_STATE_LABEL — PENDING_APPROVAL='Chờ xác nhận'
+    (cũ 'Chờ duyệt'), APPROVED='Hoàn thành' (cũ 'Đã duyệt'); `StepWorkCard` thêm prop
+    `blockedByOrder` — bước bị khóa: ẩn nút "Bắt đầu"/"Bắt đầu bước", hiện gợi ý
+    "🔒 Hoàn thành các bước trước để mở bước này." (vẫn hiện "👥 Phân công" để gán trước);
+    ExecutionDetail tính `blockedByOrder` từ `sortOrder`. Nút lượt: Đang thực hiện bỏ
+    "✓ Hoàn thành lượt" → thêm "📤 Báo hoàn thành" (gọi submit, giữ disable khi còn
+    bước bắt buộc dở); xóa section nút state COMPLETED (không còn đường vào UI);
+    Chờ xác nhận: "↩ Hủy báo hoàn thành" (người báo), "✓ Xác nhận hoàn thành"/"✕ Từ chối"
+    (người duyệt = supervisor hoặc senior); vết duyệt đổi text tương ứng.
+  - Build: `tsc --noEmit` ✓ (0 lỗi), `pnpm test` **93/93**.
+  - Chưa deploy/commit/push (parent tự làm); kiểm thử trình duyệt chờ parent agent.
 
 - **D-15: bằng chứng mở rộng + trạng thái lượt + thông báo 2 chiều — HOÀN THÀNH 18/10/2026 (subagent, user duyệt "Đồng ý").**
   - Migration 0009 (`apps/api/migrations/0009_execution_approval.sql`): `executions` thêm
