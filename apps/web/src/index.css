@@ -1117,6 +1117,11 @@ img.logo-img {
   gap: 0.7rem;
 }
 
+/* Hàng tiêu đề cột — chỉ hiện ở mobile (bảng ngang). */
+.ver-head {
+  display: none;
+}
+
 .ver-row {
   display: flex;
   gap: 1rem;
@@ -1595,8 +1600,28 @@ img.logo-img {
     padding: 0.35rem 0.6rem;
   }
 
-  .ver-row {
-    flex-direction: column;
+  /* Lịch sử phiên bản mobile: bảng ngang cuộn được (thay thẻ dọc). */
+  .ver-timeline {
+    overflow-x: auto;
+    padding-bottom: 0.4rem;
+  }
+  .ver-head {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    min-width: 640px;
+    padding: 0 1.1rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .ver-timeline .ver-row {
+    flex-direction: row;
+    align-items: center;
+    min-width: 640px;
   }
 
   .proc-head {
