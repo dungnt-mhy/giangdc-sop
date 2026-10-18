@@ -39,6 +39,13 @@ interface ExecutionRow {
   main_performer_name: string | null;
   supervisor_id: string | null;
   supervisor_name: string | null;
+  approval_requested_by: string | null;
+  approval_requested_by_name: string | null;
+  approval_requested_at: string | null;
+  approved_by: string | null;
+  approved_by_name: string | null;
+  approved_at: string | null;
+  approval_note: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,7 +93,11 @@ const EXECUTION_SELECT = `
          u.display_name AS created_by_name,
          (SELECT GROUP_CONCAT(pos.name, ', ') FROM user_positions up JOIN positions pos ON pos.id = up.position_id WHERE up.user_id = e.created_by) AS created_by_positions,
          um.display_name AS main_performer_name,
-         us.display_name AS supervisor_name
+         us.display_name AS supervisor_name,
+         e.approval_requested_by, e.approval_requested_at, e.approval_note,
+         e.approved_by, e.approved_at,
+         arb.display_name AS approval_requested_by_name,
+         ab.display_name AS approved_by_name
   FROM executions e
   JOIN processes p ON p.id = e.process_id
   JOIN process_versions pv ON pv.id = e.version_id
@@ -94,6 +105,8 @@ const EXECUTION_SELECT = `
   LEFT JOIN users u ON u.id = e.created_by
   LEFT JOIN users um ON um.id = e.main_performer_id
   LEFT JOIN users us ON us.id = e.supervisor_id
+  LEFT JOIN users arb ON arb.id = e.approval_requested_by
+  LEFT JOIN users ab ON ab.id = e.approved_by
 `;
 
 export async function findExecution(db: D1Database, id: string): Promise<ExecutionRow | null> {
@@ -335,6 +348,13 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     mainPerformerName: row.main_performer_name,
     supervisorId: row.supervisor_id,
     supervisorName: row.supervisor_name,
+    approvalRequestedBy: row.approval_requested_by,
+    approvalRequestedByName: row.approval_requested_by_name,
+    approvalRequestedAt: row.approval_requested_at,
+    approvedBy: row.approved_by,
+    approvedByName: row.approved_by_name,
+    approvedAt: row.approved_at,
+    approvalNote: row.approval_note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [])),
