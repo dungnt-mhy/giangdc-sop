@@ -27,7 +27,17 @@ interface ProcessRow {
   created_at: string;
   updated_at: string;
   created_by_name: string | null;
+  active_version_no: number | null;
+  has_scheduled: number | null;
+  latest_version_state: string | null;
 }
+
+/** Cột suy ra trạng thái bản cho thẻ quy trình (D-13: "Đang dùng" = có bản phát hành). */
+const PROCESS_VERSION_INFO = `
+  (SELECT v.version_no FROM process_versions v WHERE v.process_id = p.id AND v.state = 'ACTIVE' LIMIT 1) AS active_version_no,
+  (SELECT 1 FROM process_versions v WHERE v.process_id = p.id AND v.state = 'SCHEDULED' LIMIT 1) AS has_scheduled,
+  (SELECT v2.state FROM process_versions v2 WHERE v2.process_id = p.id ORDER BY v2.version_no DESC LIMIT 1) AS latest_version_state
+`;
 
 interface VersionRow {
   id: string;
@@ -117,6 +127,9 @@ export function toProcessDto(r: ProcessRow): ProcessDto {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     createdByName: r.created_by_name,
+    activeVersionNo: r.active_version_no ?? null,
+    hasScheduledVersion: r.has_scheduled === 1,
+    latestVersionState: (r.latest_version_state as ProcessDto['latestVersionState']) ?? null,
   };
 }
 
@@ -243,7 +256,7 @@ export async function listProcesses(
     .bind(...binds)
     .first<{ c: number }>();
   const rows = await db
-    .prepare(`SELECT p.*, u.display_name AS created_by_name ${from} ${where} ORDER BY p.updated_at DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT p.*, u.display_name AS created_by_name, ${PROCESS_VERSION_INFO} ${from} ${where} ORDER BY p.updated_at DESC LIMIT ? OFFSET ?`)
     .bind(...binds, limit, offset)
     .all<ProcessRow>();
   return { items: (rows.results ?? []).map(toProcessDto), total: totalRow?.c ?? 0 };
@@ -251,7 +264,7 @@ export async function listProcesses(
 
 export async function findProcess(db: D1Database, id: string): Promise<ProcessDto | null> {
   const row = await db
-    .prepare('SELECT p.*, u.display_name AS created_by_name FROM processes p LEFT JOIN users u ON u.id = p.created_by WHERE p.id = ?1')
+    .prepare(`SELECT p.*, u.display_name AS created_by_name, ${PROCESS_VERSION_INFO} FROM processes p LEFT JOIN users u ON u.id = p.created_by WHERE p.id = ?1`)
     .bind(id)
     .first<ProcessRow>();
   return row ? toProcessDto(row) : null;
@@ -259,7 +272,7 @@ export async function findProcess(db: D1Database, id: string): Promise<ProcessDt
 
 export async function findProcessByCode(db: D1Database, code: string): Promise<ProcessDto | null> {
   const row = await db
-    .prepare('SELECT p.*, u.display_name AS created_by_name FROM processes p LEFT JOIN users u ON u.id = p.created_by WHERE p.code = ?1')
+    .prepare(`SELECT p.*, u.display_name AS created_by_name, ${PROCESS_VERSION_INFO} FROM processes p LEFT JOIN users u ON u.id = p.created_by WHERE p.code = ?1`)
     .bind(code)
     .first<ProcessRow>();
   return row ? toProcessDto(row) : null;
