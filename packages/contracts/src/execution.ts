@@ -118,6 +118,9 @@ export interface ExecutionDto {
   createdAt: string;
   updatedAt: string;
   steps: ExecutionStepDto[];
+  /** Tối ưu danh sách: số bước hoàn thành/tổng số (để không cần nạp chi tiết steps). */
+  stepDoneCount?: number;
+  stepTotalCount?: number;
 }
 
 /** D-18: hành động trong nhật ký duyệt lượt thực hiện. */
