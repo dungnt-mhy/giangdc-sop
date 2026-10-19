@@ -45,6 +45,7 @@ import {
   toEvidenceDto,
   toExecutionDto,
   toExecutionStepDto,
+  toExecutionSummaryDto,
   type EvidenceRow,
   type ListExecutionsFilter,
 } from './executionDb.js';
@@ -445,8 +446,9 @@ executionApp.get('/executions', requireAuth, requirePermission('execution.view' 
     ...parsed.filter,
     limit: 50,
   });
+  // Tối ưu: danh sách dùng DTO gọn (1 query/bản ghi) thay vì toExecutionDto đầy đủ (3 query/bản ghi).
   const items: ExecutionDto[] = [];
-  for (const r of rows) items.push(await toExecutionDto(c.env.DB, r));
+  for (const r of rows) items.push(await toExecutionSummaryDto(c.env.DB, r));
   return c.json({ items, requestId });
 });
 
