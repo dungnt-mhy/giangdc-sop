@@ -994,6 +994,10 @@ executionApp.post('/executions/:id/reject', requireAuth, async (c) => {
           'execution', row.id,
         );
       }
+      // Fix: nạp lại execution sau khi reset bước về PENDING để UI hiện nút hành động ngay
+      // (không cần load lại trang).
+      const fresh = await findExecution(c.env.DB, row.id);
+      return { status: 200, body: { execution: fresh ? await toExecutionDto(c.env.DB, fresh) : null } };
     }
     return res;
   });
