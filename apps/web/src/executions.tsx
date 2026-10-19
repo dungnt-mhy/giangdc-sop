@@ -200,8 +200,8 @@ export function ExecutionsView({ perms, userId, isSeniorApprover }: {
       ) : (
         <div className="exec-list">
           {items.map((ex) => {
-            const done = ex.steps.filter((s) => s.state === 'DONE').length;
-            const total = ex.steps.length;
+            const done = ex.stepDoneCount ?? ex.steps.filter((s) => s.state === 'DONE').length;
+            const total = ex.stepTotalCount ?? ex.steps.length;
             return (
               <button
                 type="button"
