@@ -406,9 +406,9 @@ export async function toExecutionSummaryDto(db: D1Database, row: ExecutionRow): 
     .prepare(
       `SELECT
          (SELECT COUNT(*) FROM execution_steps WHERE execution_id = ?1) AS total,
-         (SELECT COUNT(*) FROM execution_steps WHERE execution_id = ?1 AND state = 'DONE') AS done,
-         (SELECT action FROM execution_reviews WHERE execution_id = ?1 ORDER BY created_at DESC LIMIT 1) AS last_action,
-         (SELECT step_ids FROM execution_reviews WHERE execution_id = ?1 ORDER BY created_at DESC LIMIT 1) AS last_step_ids`,
+         (SELECT COUNT(*) FROM execution_steps WHERE execution_id = ?2 AND state = 'DONE') AS done,
+         (SELECT action FROM execution_reviews WHERE execution_id = ?3 ORDER BY created_at DESC LIMIT 1) AS last_action,
+         (SELECT step_ids FROM execution_reviews WHERE execution_id = ?4 ORDER BY created_at DESC LIMIT 1) AS last_step_ids`,
     )
     .bind(row.id, row.id, row.id, row.id)
     .first<{ total: number; done: number; last_action: string | null; last_step_ids: string | null }>();
