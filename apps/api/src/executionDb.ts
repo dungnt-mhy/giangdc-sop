@@ -397,32 +397,41 @@ export function toExecutionStepDto(
   };
 }
 
-export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise<ExecutionDto> {
-  const steps = await getExecutionSteps(db, row.id);
-  const evidence = await listEvidenceForSteps(
-    db,
-    steps.map((s) => s.id),
-  );
-  const byStep = new Map<string, EvidenceDto[]>();
-  for (const ev of evidence) {
-    const list = byStep.get(ev.execution_step_id) ?? [];
-    list.push(toEvidenceDto(ev));
-    byStep.set(ev.execution_step_id, list);
-  }
-  const reviews = await listExecutionReviews(db, row.id);
-  // D-21: redoCount từng bước + rejectedStepCount từ nhật ký reject theo bước.
-  const redoCountByStep = new Map<string, number>();
-  for (const r of reviews) {
-    if (r.action !== 'reject' || !r.stepIds) continue;
-    for (const sid of r.stepIds) {
-      redoCountByStep.set(sid, (redoCountByStep.get(sid) ?? 0) + 1);
-    }
-  }
-  const latest = reviews[0];
-  const rejectedStepCount =
-    latest && latest.action === 'reject' && latest.stepIds ? latest.stepIds.length : 0;
-  // D-21b: loại reject gần nhất để danh sách hiện badge đồng nhất (cả lượt + theo bước).
-  const lastRejectKind = lastRejectKindOf(reviews);
+/**
+ * DTO gọn cho danh sách lượt: 1 query duy nhất lấy số bước + review gần nhất,
+ * thay vì 3 query/bản ghi như toExecutionDto (fix N+1).
+ */
+export async function toExecutionSummaryDto(db: D1Database, row: ExecutionRow): Promise<ExecutionDto> {
+  const agg = await db
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM execution_steps WHERE execution_id = ?1) AS total,
+         (SELECT COUNT(*) FROM execution_steps WHERE execution_id = ?1 AND state = 'DONE') AS done,
+         (SELECT action FROM execution_reviews WHERE execution_id = ?1 ORDER BY created_at DESC LIMIT 1) AS last_action,
+         (SELECT step_ids FROM execution_reviews WHERE execution_id = ?1 ORDER BY created_at DESC LIMIT 1) AS last_step_ids`,
+    )
+    .bind(row.id, row.id, row.id, row.id)
+    .first<{ total: number; done: number; last_action: string | null; last_step_ids: string | null }>();
+  const total = agg?.total ?? 0;
+  const done = agg?.done ?? 0;
+  const lastAction = agg?.last_action ?? null;
+  const stepIds = agg?.last_step_ids ? safeJsonParse<string[] | null>(agg.last_step_ids, null) : null;
+  const lastRejectKind: ExecutionDto['lastRejectKind'] =
+    lastAction === 'reject' ? (stepIds && stepIds.length > 0 ? 'steps' : 'all') : null;
+  const base = await toExecutionDtoLight(row);
+  return {
+    ...base,
+    steps: [],
+    reviews: [],
+    rejectedStepCount: lastRejectKind === 'steps' ? (stepIds?.length ?? 0) : 0,
+    lastRejectKind,
+    stepDoneCount: done,
+    stepTotalCount: total,
+  };
+}
+
+/** Dựng phần chung của ExecutionDto từ ExecutionRow (không query thêm). */
+async function toExecutionDtoLight(row: ExecutionRow): Promise<Omit<ExecutionDto, 'steps' | 'reviews' | 'rejectedStepCount' | 'lastRejectKind'>> {
   return {
     id: row.id,
     code: row.code,
@@ -454,11 +463,43 @@ export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise
     approvedAt: row.approved_at,
     approvalNote: row.approval_note,
     startedAt: row.started_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function toExecutionDto(db: D1Database, row: ExecutionRow): Promise<ExecutionDto> {
+  const steps = await getExecutionSteps(db, row.id);
+  const evidence = await listEvidenceForSteps(
+    db,
+    steps.map((s) => s.id),
+  );
+  const byStep = new Map<string, EvidenceDto[]>();
+  for (const ev of evidence) {
+    const list = byStep.get(ev.execution_step_id) ?? [];
+    list.push(toEvidenceDto(ev));
+    byStep.set(ev.execution_step_id, list);
+  }
+  const reviews = await listExecutionReviews(db, row.id);
+  // D-21: redoCount từng bước + rejectedStepCount từ nhật ký reject theo bước.
+  const redoCountByStep = new Map<string, number>();
+  for (const r of reviews) {
+    if (r.action !== 'reject' || !r.stepIds) continue;
+    for (const sid of r.stepIds) {
+      redoCountByStep.set(sid, (redoCountByStep.get(sid) ?? 0) + 1);
+    }
+  }
+  const latest = reviews[0];
+  const rejectedStepCount =
+    latest && latest.action === 'reject' && latest.stepIds ? latest.stepIds.length : 0;
+  // D-21b: loại reject gần nhất để danh sách hiện badge đồng nhất (cả lượt + theo bước).
+  const lastRejectKind = lastRejectKindOf(reviews);
+  const base = await toExecutionDtoLight(row);
+  return {
+    ...base,
     reviews,
     rejectedStepCount,
     lastRejectKind,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
     steps: steps.map((s) => toExecutionStepDto(s, byStep.get(s.id) ?? [], redoCountByStep.get(s.id) ?? 0)),
   };
 }
