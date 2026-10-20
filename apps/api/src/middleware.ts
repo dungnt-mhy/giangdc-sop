@@ -45,10 +45,15 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
 
 /** Yêu cầu một permission cụ thể (kiểm tra phía server, SRS §5). */
 export function requirePermission(permission: Permission) {
+  return requireAnyPermission([permission]);
+}
+
+/** Yêu cầu ít nhất một trong các permission (ví dụ: user.manage hoặc audit.view). */
+export function requireAnyPermission(permissions: readonly Permission[]) {
   return createMiddleware<AppEnv>(async (c, next) => {
     const requestId = c.get('requestId') as string;
-    const permissions = new Set((c.get('permissions') ?? []) as string[]);
-    if (!permissions.has(permission)) {
+    const userPerms = new Set((c.get('permissions') ?? []) as string[]);
+    if (!permissions.some((p) => userPerms.has(p))) {
       return c.json(errorBody('FORBIDDEN', 'Không đủ quyền thực hiện thao tác này.', requestId), 403);
     }
     await next();
