@@ -7,6 +7,8 @@ export * from './process.js';
 export * from './execution.js';
 export * from './report.js';
 export * from './admin.js';
+// Giải quyết trùng tên với process.ts: bản admin (D-28) là nguồn chính.
+export type { CreatePositionBody, CreateRoleBody } from './admin.js';
 
 export interface HealthResponse {
   status: 'ok';
