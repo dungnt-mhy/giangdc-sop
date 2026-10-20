@@ -17,6 +17,7 @@ import {
   getUserScopes,
   writeAudit,
 } from './db.js';
+import { updateLastLogin } from './adminDb.js';
 import { errorBody, requireAuth } from './middleware.js';
 import type { AppEnv, AuthSession } from './env.js';
 
@@ -63,6 +64,7 @@ authApp.post('/login', async (c) => {
   const ttlMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : SESSION_TTL_MS;
   const expiresAt = new Date(Date.now() + ttlMs).toISOString();
   await createSession(c.env.DB, newId(), user.id, tokenHash, expiresAt);
+  await updateLastLogin(c.env.DB, user.id);
   await writeAudit(c.env.DB, {
     id: newId(),
     actorId: user.id,
