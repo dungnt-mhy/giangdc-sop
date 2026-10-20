@@ -84,6 +84,14 @@ const PERMISSION_GROUPS: { group: string; perms: { code: string; label: string }
   },
 ];
 
+/** Nhãn tiếng Việt cho từng permission code (dùng khi hiển thị). */
+export const PERMISSION_LABEL: Record<string, string> = Object.fromEntries(
+  PERMISSION_GROUPS.flatMap((g) => g.perms.map((p) => [p.code, p.label])),
+);
+
+/** Hiển thị permission: nhãn tiếng Việt, fallback mã nếu chưa có nhãn. */
+export const permLabel = (code: string) => PERMISSION_LABEL[code] ?? code;
+
 const fmtDT = (iso: string | null) => (iso ? new Date(iso).toLocaleString('vi-VN') : '—');
 const idemKey = () => crypto.randomUUID();
 
@@ -378,6 +386,7 @@ function UsersTab({ selfId }: { selfId: string }) {
                         ...new Set(roles.filter((r) => u.roleIds.includes(r.id)).flatMap((r) => r.permissions)),
                       ]
                         .sort()
+                        .map((p) => permLabel(p))
                         .join(', ') || '—'}
                     </div>
                   </div>
@@ -662,8 +671,8 @@ function RolesTab() {
               {expandedId === r.id && (
                 <div className="perm-chips" style={{ marginTop: 6 }}>
                   {r.permissions.map((p) => (
-                    <span key={p} className="perm-chip">
-                      {p}
+                    <span key={p} className="perm-chip" title={p}>
+                      {permLabel(p)}
                     </span>
                   ))}
                 </div>
@@ -1459,8 +1468,10 @@ function AuditTab() {
 
 /* ================= Trang chính ================= */
 
-export function AdminView({ userId }: { userId: string }) {
-  const [tab, setTab] = React.useState<Tab>('users');
+export function AdminView({ userId, canManage }: { userId: string; canManage: boolean }) {
+  // Người chỉ có audit.view (không có user.manage) chỉ xem được tab Nhật ký.
+  const [tab, setTab] = React.useState<Tab>(canManage ? 'users' : 'audit');
+  const visibleTabs = canManage ? TABS : TABS.filter((t) => t.key === 'audit');
   return (
     <div>
       <header className="topbar">
@@ -1474,7 +1485,7 @@ export function AdminView({ userId }: { userId: string }) {
       </header>
 
       <div className="seg-toggle" style={{ marginBottom: '1.2rem' }}>
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.key}
             type="button"
@@ -1487,11 +1498,11 @@ export function AdminView({ userId }: { userId: string }) {
       </div>
 
       <section className="section">
-        {tab === 'users' && <UsersTab selfId={userId} />}
-        {tab === 'roles' && <RolesTab />}
-        {tab === 'positions' && <PositionsTab />}
-        {tab === 'orgunits' && <OrgUnitsTab />}
-        {tab === 'reasons' && <ReasonsTab />}
+        {tab === 'users' && canManage && <UsersTab selfId={userId} />}
+        {tab === 'roles' && canManage && <RolesTab />}
+        {tab === 'positions' && canManage && <PositionsTab />}
+        {tab === 'orgunits' && canManage && <OrgUnitsTab />}
+        {tab === 'reasons' && canManage && <ReasonsTab />}
         {tab === 'audit' && <AuditTab />}
       </section>
     </div>
