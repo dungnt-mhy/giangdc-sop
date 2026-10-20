@@ -1,6 +1,7 @@
 /**
  * Module Quản trị (T7): tài khoản, vai trò, danh mục lý do, audit log.
- * SRS v1.6: ADM-001..006. Tất cả endpoint yêu cầu quyền `user.manage`.
+ * SRS v1.6: ADM-001..006. Endpoint yêu cầu quyền `user.manage`,
+ * riêng GET /audit cho phép thêm quyền `audit.view`.
  *
  * ADM-003: KHÔNG BAO GIỜ ghi password/token vào audit — các audit dưới đây
  * chỉ ghi action + object, không kèm body chứa password.
@@ -76,13 +77,26 @@ import {
   type OrgUnitRow,
 } from './adminDb.js';
 import { writeAudit } from './db.js';
-import { errorBody, requireAuth, requirePermission } from './middleware.js';
+import { errorBody, requireAuth } from './middleware.js';
 import { withIdempotency } from './processes.js';
 import type { AppEnv, AuthSession } from './env.js';
 
 export const adminApp = new Hono<AppEnv>();
 
-adminApp.use('*', requireAuth, requirePermission('user.manage'));
+// Guard: mọi endpoint quản trị yêu cầu user.manage — ngoại lệ GET /audit
+// cho phép thêm quyền audit.view (người chỉ xem nhật ký, không quản trị).
+adminApp.use('*', requireAuth, async (c, next) => {
+  const requestId = c.get('requestId') as string;
+  const perms = new Set((c.get('permissions') ?? []) as string[]);
+  const isAudit = c.req.method === 'GET' && c.req.path.endsWith('/audit');
+  const allowed = isAudit
+    ? perms.has('user.manage') || perms.has('audit.view')
+    : perms.has('user.manage');
+  if (!allowed) {
+    return c.json(errorBody('FORBIDDEN', 'Không đủ quyền thực hiện thao tác này.', requestId), 403);
+  }
+  await next();
+});
 
 const VALID_STATUSES: UserStatus[] = ['ACTIVE', 'LOCKED', 'DISABLED'];
 const VALID_CATEGORIES: ReasonCategory[] = ['cancel', 'skip', 'fail', 'reject'];
