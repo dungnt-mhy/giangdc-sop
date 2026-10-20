@@ -1,7 +1,7 @@
 import React from 'react';
 import { ProcessesView } from './processes.js';
 import { ExecutionsView } from './executions.js';
-import { AdminView } from './admin.js';
+import { AdminView, permLabel } from './admin.js';
 import { ReportsView } from './reports.js';
 import { EvidenceView } from './evidence.js';
 import { ExceptionsView } from './exceptions.js';
@@ -337,7 +337,7 @@ function LoginPage({ onLogin }: { onLogin: (me: MeResponse) => void }) {
 }
 
 /* ---------------- Khung app sau đăng nhập ---------------- */
-const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string; perm?: string }[] = [
+const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?: string; perm?: string; permAny?: string[] }[] = [
   { key: 'overview', label: 'Tổng quan', ico: '◉', live: true },
   { key: 'processes', label: 'Danh mục Quy trình', ico: '◈', live: true },
   { key: 'execution', label: 'Lượt Thực hiện', ico: '⬢', live: true },
@@ -345,8 +345,8 @@ const NAV_ITEMS: { key: string; label: string; ico: string; live: boolean; tag?:
   { key: 'exception', label: 'Ngoại lệ', ico: '⚠', live: true, perm: 'execution.view' },
   // T6: chỉ hiện khi có quyền execution.view.
   { key: 'report', label: 'Báo cáo', ico: '📊', live: true, perm: 'execution.view' },
-  // T7: chỉ hiện khi có quyền user.manage.
-  { key: 'admin', label: 'Quản trị', ico: '⚙', live: true, perm: 'user.manage' },
+  // T7/D-28: hiện khi có user.manage (toàn quyền) hoặc audit.view (chỉ tab Nhật ký).
+  { key: 'admin', label: 'Quản trị', ico: '⚙', live: true, permAny: ['user.manage', 'audit.view'] },
 ];
 
 const MODULES: { name: string; desc: string; live: boolean; tag: string; ico: string }[] = [
@@ -413,7 +413,11 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
   const isSeniorApprover = me.roles.some((r) => r.seniorApprover);
   const [pendingApproval, setPendingApproval] = React.useState(0);
   // T6: menu Báo cáo chỉ hiện khi có quyền execution.view.
-  const visibleNavItems = NAV_ITEMS.filter((item) => !item.perm || me.permissions.includes(item.perm));
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) =>
+      (!item.perm || me.permissions.includes(item.perm)) &&
+      (!item.permAny || item.permAny.some((p) => me.permissions.includes(p))),
+  );
 
   const hashToNav = (r: ReturnType<typeof parseHash>): string => {
     if (r.nav === 'processes') return 'processes';
@@ -559,7 +563,7 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
         ) : nav === 'report' ? (
           <ReportsView />
         ) : nav === 'admin' ? (
-          <AdminView userId={me.user.id} />
+          <AdminView userId={me.user.id} canManage={me.permissions.includes('user.manage')} />
         ) : nav === 'evidence' ? (
           <EvidenceView onOpenExecution={(id) => { setHash(`#/executions/${id}`); }} />
         ) : nav === 'exception' ? (
@@ -630,8 +634,8 @@ function HomePage({ me, onLogout }: { me: MeResponse; onLogout: () => void }) {
               <div className="gtitle">{PERM_GROUP_LABEL[prefix] ?? prefix}</div>
               <div>
                 {perms.map((p) => (
-                  <span className="perm-tag" key={p}>
-                    {p}
+                  <span className="perm-tag" key={p} title={p}>
+                    {permLabel(p)}
                   </span>
                 ))}
               </div>
